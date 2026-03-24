@@ -18,12 +18,16 @@ app.config['DATABASE'] = os.getenv('DATABASE_PATH', DB_PATH)
 app.config['FINALIZE_TOKEN'] = os.getenv('FINALIZE_TOKEN', 'change-me-finalize-token')
 app.config['WEBHOOK_URL'] = os.getenv('DISCORD_WEBHOOK_URL', '')
 app.config['ADMIN_NICKNAME'] = os.getenv('ADMIN_NICKNAME', '관리자')
+app.config['ADMIN_CODES'] = [
+    code.strip() for code in os.getenv('ADMIN_CODES', '').split(',') if code.strip()
+]
 
 
 def get_db():
     if 'db' not in g:
         g.db = sqlite3.connect(app.config['DATABASE'])
         g.db.row_factory = sqlite3.Row
+        g.db.execute('PRAGMA foreign_keys = ON')
     return g.db
 
 
@@ -36,6 +40,7 @@ def close_db(_error=None):
 
 def init_db():
     db = sqlite3.connect(app.config['DATABASE'])
+    db.execute('PRAGMA foreign_keys = ON')
     with open(os.path.join(BASE_DIR, 'schema.sql'), 'r', encoding='utf-8') as f:
         db.executescript(f.read())
     db.commit()
@@ -50,8 +55,12 @@ def to_kst(dt_str: str) -> datetime:
     return datetime.strptime(dt_str, '%Y-%m-%dT%H:%M').replace(tzinfo=KST)
 
 
+def from_iso(dt_str: str) -> datetime:
+    return datetime.fromisoformat(dt_str)
+
+
 def to_display(dt_str: str) -> str:
-    return datetime.fromisoformat(dt_str).astimezone(KST).strftime('%Y-%m-%d %H:%M')
+    return from_iso(dt_str).astimezone(KST).strftime('%Y-%m-%d %H:%M')
 
 
 def normalize_multiline_options(raw: str):
@@ -68,6 +77,17 @@ def normalize_multiline_options(raw: str):
     return items
 
 
+def poll_state(poll) -> str:
+    now = kst_now()
+    start_dt = from_iso(poll['start_at']).astimezone(KST)
+    end_dt = from_iso(poll['end_at']).astimezone(KST)
+    if poll['status'] == 'closed' or end_dt <= now:
+        return 'closed'
+    if start_dt > now:
+        return 'scheduled'
+    return 'open'
+
+
 def fetch_poll_or_404(poll_id: int):
     db = get_db()
     poll = db.execute('SELECT * FROM polls WHERE id = ?', (poll_id,)).fetchone()
@@ -80,25 +100,27 @@ def fetch_poll_detail(poll_id: int):
     db = get_db()
     poll = fetch_poll_or_404(poll_id)
     options = db.execute(
-        'SELECT * FROM poll_options WHERE poll_id = ? ORDER BY display_order, id',
+        """
+        SELECT * FROM poll_options WHERE poll_id = ? ORDER BY display_order, id
+        """,
         (poll_id,),
     ).fetchall()
     votes = db.execute(
-        '''
+        """
         SELECT v.*, o.option_text
         FROM votes v
         JOIN poll_options o ON o.id = v.option_id
         WHERE v.poll_id = ?
         ORDER BY v.created_at ASC, v.id ASC
-        ''',
+        """,
         (poll_id,),
     ).fetchall()
     comments = db.execute(
-        '''
+        """
         SELECT * FROM comments
         WHERE poll_id = ?
         ORDER BY created_at DESC, id DESC
-        ''',
+        """,
         (poll_id,),
     ).fetchall()
     return poll, options, votes, comments
@@ -124,18 +146,37 @@ def build_poll_view_model(poll_id: int):
             }
         )
 
+    state = poll_state(poll)
     total_votes = len(votes)
-    is_closed = poll['status'] == 'closed' or datetime.fromisoformat(poll['end_at']).astimezone(KST) <= kst_now()
 
     return {
         'poll': poll,
         'options': option_cards,
         'comments': comments,
         'total_votes': total_votes,
-        'is_closed': is_closed,
+        'is_closed': state == 'closed',
+        'is_scheduled': state == 'scheduled',
+        'can_vote': state == 'open',
         'start_at_display': to_display(poll['start_at']),
         'end_at_display': to_display(poll['end_at']),
+        'state': state,
+        'admin_nickname': app.config['ADMIN_NICKNAME'],
     }
+
+
+def format_created_message(poll_id: int) -> str:
+    data = build_poll_view_model(poll_id)
+    poll = data['poll']
+    lines = [
+        '🆕 새 투표가 생성됐어',
+        f"제목: {poll['title']}",
+        f"개설자: {poll['created_by']}",
+        f"기간: {data['start_at_display']} ~ {data['end_at_display']}",
+        f"링크: {request.url_root.rstrip('/')}{url_for('view_poll', poll_id=poll_id)}",
+    ]
+    if poll['description']:
+        lines.append(f"설명: {poll['description']}")
+    return '\n'.join(lines)
 
 
 def format_final_message(poll_id: int) -> str:
@@ -156,8 +197,7 @@ def format_final_message(poll_id: int) -> str:
         lines.append(f"- {option['text']} ({option['count']}표)")
         if option['votes']:
             for vote in option['votes']:
-                comment = f" | {vote['comment']}" if vote['comment'] else ''
-                lines.append(f"  · {vote['nickname']}{comment}")
+                lines.append(f"  · {vote['nickname']}")
         else:
             lines.append('  · 없음')
 
@@ -170,11 +210,27 @@ def format_final_message(poll_id: int) -> str:
     return '\n'.join(lines)
 
 
-def finalize_due_polls(force: bool = False):
+def send_webhook_message(content: str):
+    webhook_url = app.config['WEBHOOK_URL']
+    if not webhook_url:
+        return False, '웹훅 URL 미설정'
+
+    response = requests.post(webhook_url, json={'content': content}, timeout=15)
+    response.raise_for_status()
+    return True, 'sent'
+
+
+def finalize_due_polls(force: bool = False, poll_ids=None):
     db = get_db()
     now_iso = kst_now().astimezone(UTC).isoformat()
 
-    if force:
+    if poll_ids:
+        placeholders = ','.join('?' for _ in poll_ids)
+        polls = db.execute(
+            f"SELECT * FROM polls WHERE id IN ({placeholders}) AND result_sent = 0",
+            tuple(poll_ids),
+        ).fetchall()
+    elif force:
         polls = db.execute(
             "SELECT * FROM polls WHERE status = 'open' AND result_sent = 0"
         ).fetchall()
@@ -185,12 +241,9 @@ def finalize_due_polls(force: bool = False):
         ).fetchall()
 
     sent_ids = []
-    webhook_url = app.config['WEBHOOK_URL']
     for poll in polls:
         message = format_final_message(poll['id'])
-        if webhook_url:
-            response = requests.post(webhook_url, json={'content': message}, timeout=15)
-            response.raise_for_status()
+        send_webhook_message(message)
         db.execute(
             "UPDATE polls SET status = 'closed', result_sent = 1, result_sent_at = ? WHERE id = ?",
             (now_iso, poll['id']),
@@ -199,6 +252,21 @@ def finalize_due_polls(force: bool = False):
 
     db.commit()
     return sent_ids
+
+
+def require_admin_or_flash():
+    admin_nickname = request.form.get('admin_nickname', '').strip()
+    admin_code = request.form.get('admin_code', '').strip()
+
+    if admin_nickname != app.config['ADMIN_NICKNAME']:
+        flash('관리자 닉네임이 올바르지 않아.', 'error')
+        return None
+
+    if admin_code not in app.config['ADMIN_CODES']:
+        flash('관리자 코드가 올바르지 않아.', 'error')
+        return None
+
+    return True
 
 
 @app.before_request
@@ -212,13 +280,28 @@ def index():
     db = get_db()
     finalize_due_polls(force=False)
 
-    open_polls = db.execute(
-        "SELECT * FROM polls WHERE status = 'open' ORDER BY end_at ASC, id DESC"
+    all_open = db.execute(
+        "SELECT * FROM polls WHERE status = 'open' ORDER BY start_at ASC, end_at ASC, id DESC"
     ).fetchall()
+    active_polls = []
+    scheduled_polls = []
+    for poll in all_open:
+        state = poll_state(poll)
+        if state == 'scheduled':
+            scheduled_polls.append(poll)
+        elif state == 'open':
+            active_polls.append(poll)
+
     closed_polls = db.execute(
         "SELECT * FROM polls WHERE status = 'closed' ORDER BY end_at DESC, id DESC LIMIT 20"
     ).fetchall()
-    return render_template('index.html', open_polls=open_polls, closed_polls=closed_polls, to_display=to_display)
+    return render_template(
+        'index.html',
+        open_polls=active_polls,
+        scheduled_polls=scheduled_polls,
+        closed_polls=closed_polls,
+        to_display=to_display,
+    )
 
 
 @app.route('/polls/new', methods=['GET', 'POST'])
@@ -252,12 +335,12 @@ def create_poll():
 
         db = get_db()
         cursor = db.execute(
-            '''
+            """
             INSERT INTO polls (
                 title, description, created_by, start_at, end_at,
                 allow_duplicate, show_live_result, show_voter_names, status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
-            ''',
+            """,
             (
                 title,
                 description,
@@ -276,7 +359,14 @@ def create_poll():
                 (poll_id, option, idx),
             )
         db.commit()
-        flash('투표가 생성됐어. 링크를 공유하면 돼.', 'success')
+
+        try:
+            send_webhook_message(format_created_message(poll_id))
+        except Exception as exc:
+            flash(f'투표는 생성됐지만 디스코드 알림 전송은 실패했어: {exc}', 'error')
+        else:
+            flash('투표가 생성됐고 디스코드에도 알렸어.', 'success')
+
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     return render_template('create_poll.html')
@@ -286,23 +376,24 @@ def create_poll():
 def view_poll(poll_id: int):
     finalize_due_polls(force=False)
     data = build_poll_view_model(poll_id)
+    if data['is_scheduled']:
+        flash(f"이 투표는 아직 시작 전이야. 시작 시간: {data['start_at_display']}", 'error')
     return render_template('poll_detail.html', **data)
 
 
 @app.route('/polls/<int:poll_id>/vote', methods=['POST'])
 def submit_vote(poll_id: int):
     poll = fetch_poll_or_404(poll_id)
-    if poll['status'] == 'closed':
+    state = poll_state(poll)
+    if state == 'closed':
         flash('이미 종료된 투표야.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
-    if datetime.fromisoformat(poll['end_at']).astimezone(KST) <= kst_now():
-        finalize_due_polls(force=False)
-        flash('투표 시간이 종료됐어.', 'error')
+    if state == 'scheduled':
+        flash('아직 시작되지 않은 투표야.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     nickname = request.form.get('nickname', '').strip()
-    comment = request.form.get('comment', '').strip()
     option_ids = request.form.getlist('option_ids')
 
     if not nickname:
@@ -331,8 +422,8 @@ def submit_vote(poll_id: int):
             continue
 
         db.execute(
-            'INSERT INTO votes (poll_id, option_id, nickname, comment) VALUES (?, ?, ?, ?)',
-            (poll_id, int(option_id), nickname, comment),
+            'INSERT INTO votes (poll_id, option_id, nickname) VALUES (?, ?, ?)',
+            (poll_id, int(option_id), nickname),
         )
         inserted += 1
 
@@ -348,10 +439,7 @@ def submit_vote(poll_id: int):
 
 @app.route('/polls/<int:poll_id>/comments', methods=['POST'])
 def submit_comment(poll_id: int):
-    poll = fetch_poll_or_404(poll_id)
-    if poll['status'] == 'closed':
-        flash('종료된 투표에는 댓글만 남길 수는 있지만, 현재 설정상 막아둘게.', 'error')
-        return redirect(url_for('view_poll', poll_id=poll_id))
+    fetch_poll_or_404(poll_id)
 
     nickname = request.form.get('nickname', '').strip()
     content = request.form.get('content', '').strip()
@@ -367,6 +455,45 @@ def submit_comment(poll_id: int):
     db.commit()
     flash('댓글이 등록됐어.', 'success')
     return redirect(url_for('view_poll', poll_id=poll_id))
+
+
+@app.route('/polls/<int:poll_id>/close', methods=['POST'])
+def close_poll(poll_id: int):
+    poll = fetch_poll_or_404(poll_id)
+    if require_admin_or_flash() is None:
+        return redirect(url_for('view_poll', poll_id=poll_id))
+
+    if poll_state(poll) == 'closed':
+        flash('이미 종료된 투표야.', 'error')
+        return redirect(url_for('view_poll', poll_id=poll_id))
+
+    db = get_db()
+    now_iso = kst_now().astimezone(UTC).isoformat()
+    db.execute("UPDATE polls SET end_at = ?, status = 'open', result_sent = 0 WHERE id = ?", (now_iso, poll_id))
+    db.commit()
+
+    try:
+        finalize_due_polls(force=False, poll_ids=[poll_id])
+    except Exception as exc:
+        flash(f'투표는 종료됐지만 디스코드 전송은 실패했어: {exc}', 'error')
+    else:
+        flash('투표를 종료했고 결과도 디스코드로 전송했어.', 'success')
+
+    return redirect(url_for('view_poll', poll_id=poll_id))
+
+
+@app.route('/polls/<int:poll_id>/delete', methods=['POST'])
+def delete_poll(poll_id: int):
+    poll = fetch_poll_or_404(poll_id)
+    if require_admin_or_flash() is None:
+        return redirect(url_for('view_poll', poll_id=poll_id))
+
+    db = get_db()
+    title = poll['title']
+    db.execute('DELETE FROM polls WHERE id = ?', (poll_id,))
+    db.commit()
+    flash(f'"{title}" 투표를 삭제했어.', 'success')
+    return redirect(url_for('index'))
 
 
 @app.route('/internal/finalize')
@@ -389,5 +516,6 @@ def healthz():
 
 
 if __name__ == '__main__':
-    init_db()
+    if not os.path.exists(app.config['DATABASE']):
+        init_db()
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')), debug=True)

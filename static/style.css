@@ -153,3 +153,27 @@ textarea { resize: vertical; }
 }
 .comment-item:first-child { border-top: 0; padding-top: 0; }
 .share-box input { margin-top: 8px; }
+
+
+.three-col { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1100px) { .three-col { grid-template-columns: 1fr; } }
+.status-scheduled { background: rgba(250, 204, 21, 0.16); color: #fde68a; }
+.notice-box {
+  margin-bottom: 14px;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  background: rgba(250, 204, 21, 0.12);
+  color: #fde68a;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.notice-muted {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+.button.danger {
+  background: var(--danger);
+  color: white;
+}
+.admin-card { margin-top: 20px; }
+.scheduled-card { cursor: pointer; }

@@ -176,3 +176,11 @@ https://public-poll-board.onrender.com/internal/finalize?token=네_FINALIZE_TOKE
 ## 주의
 
 이 프로젝트는 SQLite를 사용합니다. 개인용/소규모 용도로는 충분하지만, 서버 재배포나 인스턴스 재시작 시 데이터 보존이 중요하다면 Postgres로 바꾸는 것이 더 안전합니다.
+
+
+## 추가 변경
+- 시작 전 투표는 목록에서 클릭 시 팝업 안내
+- 투표 생성 시 Discord 웹훅 알림 전송
+- 관리자 닉네임 + 여러 관리자 코드로 수동 종료/삭제
+- 앱 재시작 시 기존 투표 유지 (테이블 DROP 제거)
+- 투표 코멘트 입력 제거

@@ -7,7 +7,7 @@
   <a class="button" href="{{ url_for('create_poll') }}">투표 만들기</a>
 </section>
 
-<section class="grid two-col">
+<section class="grid three-col">
   <div class="card">
     <div class="section-title-row">
       <h2>진행 중인 투표</h2>
@@ -25,6 +25,26 @@
       </div>
     {% else %}
       <p class="muted">아직 진행 중인 투표가 없어.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="section-title-row">
+      <h2>시작 예정 투표</h2>
+      <span class="muted">{{ scheduled_polls|length }}개</span>
+    </div>
+    {% if scheduled_polls %}
+      <div class="card-list">
+        {% for poll in scheduled_polls %}
+          <a class="list-card scheduled-card" href="#" data-start-at="{{ to_display(poll['start_at']) }}" onclick="return showNotStartedPopup(this);">
+            <strong>{{ poll['title'] }}</strong>
+            <span>시작: {{ to_display(poll['start_at']) }}</span>
+            <span>개설자: {{ poll['created_by'] }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">예정된 투표가 없어.</p>
     {% endif %}
   </div>
 
@@ -48,4 +68,12 @@
     {% endif %}
   </div>
 </section>
+
+<script>
+function showNotStartedPopup(el) {
+  const startAt = el.dataset.startAt || '';
+  alert(`이 투표는 아직 시작되지 않았어.\n시작 시간: ${startAt}`);
+  return false;
+}
+</script>
 {% endblock %}

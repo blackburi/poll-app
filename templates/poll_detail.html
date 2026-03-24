@@ -7,8 +7,8 @@
       <h1>{{ poll['title'] }}</h1>
       <p class="muted">개설자: {{ poll['created_by'] }} · 기간: {{ start_at_display }} ~ {{ end_at_display }}</p>
     </div>
-    <span class="status {{ 'status-closed' if is_closed else 'status-open' }}">
-      {{ '종료됨' if is_closed else '진행 중' }}
+    <span class="status {{ 'status-closed' if is_closed else ('status-scheduled' if is_scheduled else 'status-open') }}">
+      {{ '종료됨' if is_closed else ('시작 전' if is_scheduled else '진행 중') }}
     </span>
   </div>
   {% if poll['description'] %}
@@ -20,29 +20,29 @@
 <section class="grid two-col">
   <div class="card">
     <h2>투표하기</h2>
+    {% if is_scheduled %}
+      <div class="notice-box">아직 시작되지 않은 투표야. 시작 시간 이후에 참여할 수 있어.</div>
+    {% elif is_closed %}
+      <div class="notice-box notice-muted">이 투표는 이미 종료됐어.</div>
+    {% endif %}
     <form method="post" action="{{ url_for('submit_vote', poll_id=poll['id']) }}" class="form-grid">
       <label class="full">
         <span>닉네임</span>
-        <input type="text" name="nickname" placeholder="예: 대재" required {{ 'disabled' if is_closed else '' }}>
-      </label>
-
-      <label class="full">
-        <span>투표 코멘트 (선택)</span>
-        <input type="text" name="comment" placeholder="예: 부캐는 22시만 가능" {{ 'disabled' if is_closed else '' }}>
+        <input type="text" name="nickname" placeholder="예: 대재" required {{ 'disabled' if not can_vote else '' }}>
       </label>
 
       <div class="full option-checks">
         <span>시간대 선택 (중복 허용, 같은 닉네임으로 같은 항목은 1번만)</span>
         {% for option in options %}
           <label class="option-check">
-            <input type="checkbox" name="option_ids" value="{{ option['id'] }}" {{ 'disabled' if is_closed else '' }}>
+            <input type="checkbox" name="option_ids" value="{{ option['id'] }}" {{ 'disabled' if not can_vote else '' }}>
             <span>{{ option['text'] }}</span>
           </label>
         {% endfor %}
       </div>
 
       <div class="full actions">
-        <button class="button" type="submit" {{ 'disabled' if is_closed else '' }}>투표 제출</button>
+        <button class="button" type="submit" {{ 'disabled' if not can_vote else '' }}>투표 제출</button>
       </div>
     </form>
   </div>
@@ -68,9 +68,6 @@
                       <strong>{{ vote['nickname'] }}</strong>
                     {% else %}
                       <strong>익명</strong>
-                    {% endif %}
-                    {% if vote['comment'] %}
-                      <span class="muted">— {{ vote['comment'] }}</span>
                     {% endif %}
                   </li>
                 {% endfor %}
@@ -125,6 +122,42 @@
     {% else %}
       <p class="muted">아직 댓글이 없어.</p>
     {% endif %}
+  </div>
+</section>
+
+<section class="card admin-card">
+  <div class="section-title-row">
+    <h2>관리자 작업</h2>
+    <span class="muted">관리자 닉네임 + 관리자 코드 필요</span>
+  </div>
+  <div class="grid two-col">
+    <form method="post" action="{{ url_for('close_poll', poll_id=poll['id']) }}" class="form-grid">
+      <label class="full">
+        <span>관리자 닉네임</span>
+        <input type="text" name="admin_nickname" placeholder="예: {{ admin_nickname }}" required>
+      </label>
+      <label class="full">
+        <span>관리자 코드</span>
+        <input type="password" name="admin_code" placeholder="관리자 코드 입력" required>
+      </label>
+      <div class="full actions">
+        <button class="button secondary" type="submit">투표 종료</button>
+      </div>
+    </form>
+
+    <form method="post" action="{{ url_for('delete_poll', poll_id=poll['id']) }}" class="form-grid" onsubmit="return confirm('정말 이 투표를 삭제할까?');">
+      <label class="full">
+        <span>관리자 닉네임</span>
+        <input type="text" name="admin_nickname" placeholder="예: {{ admin_nickname }}" required>
+      </label>
+      <label class="full">
+        <span>관리자 코드</span>
+        <input type="password" name="admin_code" placeholder="관리자 코드 입력" required>
+      </label>
+      <div class="full actions">
+        <button class="button danger" type="submit">투표 삭제</button>
+      </div>
+    </form>
   </div>
 </section>
 {% endblock %}
