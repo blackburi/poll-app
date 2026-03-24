@@ -5,7 +5,7 @@
   <div class="section-title-row">
     <div>
       <h1>{{ poll['title'] }}</h1>
-      <p class="muted">개설자: {{ poll['created_by'] }} · 기간: {{ start_at_display }} ~ {{ end_at_display }}</p>
+      <p class="muted">개설자: {{ poll['creator_nickname'] }} · 기간: {{ start_at_display }} ~ {{ end_at_display }}</p>
     </div>
     <span class="status {{ 'status-closed' if is_closed else ('status-scheduled' if is_scheduled else 'status-open') }}">
       {{ '종료됨' if is_closed else ('시작 전' if is_scheduled else '진행 중') }}

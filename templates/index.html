@@ -19,7 +19,7 @@
           <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
             <strong>{{ poll['title'] }}</strong>
             <span>종료: {{ to_display(poll['end_at']) }}</span>
-            <span>개설자: {{ poll['created_by'] }}</span>
+            <span>개설자: {{ poll['creator_nickname'] }}</span>
           </a>
         {% endfor %}
       </div>
@@ -39,7 +39,7 @@
           <a class="list-card scheduled-card" href="#" data-start-at="{{ to_display(poll['start_at']) }}" onclick="return showNotStartedPopup(this);">
             <strong>{{ poll['title'] }}</strong>
             <span>시작: {{ to_display(poll['start_at']) }}</span>
-            <span>개설자: {{ poll['created_by'] }}</span>
+            <span>개설자: {{ poll['creator_nickname'] }}</span>
           </a>
         {% endfor %}
       </div>
@@ -59,7 +59,7 @@
           <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
             <strong>{{ poll['title'] }}</strong>
             <span>종료: {{ to_display(poll['end_at']) }}</span>
-            <span>개설자: {{ poll['created_by'] }}</span>
+            <span>개설자: {{ poll['creator_nickname'] }}</span>
           </a>
         {% endfor %}
       </div>
