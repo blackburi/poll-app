@@ -20,7 +20,7 @@ poll_app/
 ├─ schema.sql
 ├─ requirements.txt
 ├─ render.yaml
-├─ .env.example
+├─ .env
 ├─ README.md
 ├─ static/
 │  └─ style.css
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 
 ### 4) 환경변수 설정
 
-`.env.example` 내용을 참고해서 환경변수를 설정하세요.
+`.env` 내용을 참고해서 환경변수를 설정하세요.
 
 Windows PowerShell 예시:
 
