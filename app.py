@@ -181,7 +181,7 @@ def format_created_message(poll_id: int) -> str:
     lines = [
         '🆕 새 투표가 생성됐어',
         f"제목: {poll['title']}",
-        f"개설자: {poll['created_by']}",
+        f"개설자: {poll['created_nickname']}",
         f"기간: {data['start_at_display']} ~ {data['end_at_display']}",
         f"링크: {request.url_root.rstrip('/')}{url_for('view_poll', poll_id=poll_id)}",
     ]
@@ -197,7 +197,7 @@ def format_final_message(poll_id: int) -> str:
     lines = [
         '📊 투표 종료',
         f"제목: {poll['title']}",
-        f"작성자: {poll['created_by']}",
+        f"작성자: {poll['created_nickname']}",
         f"기간: {data['start_at_display']} ~ {data['end_at_display']}",
         f"총 투표 수: {data['total_votes']}표",
         '',
@@ -319,7 +319,7 @@ def index():
 def create_poll():
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
-        created_by = request.form.get('created_by', '').strip() or app.config['ADMIN_NICKNAME']
+        created_nickname = request.form.get('created_nickname', '').strip() or app.config['ADMIN_NICKNAME']
         options_text = request.form.get('options_text', '').strip()
         description = request.form.get('description', '').strip()
         start_at = request.form.get('start_at', '').strip()
@@ -348,14 +348,14 @@ def create_poll():
         cursor = db.execute(
             """
             INSERT INTO polls (
-                title, description, created_by, start_at, end_at,
+                title, description, created_nickname, start_at, end_at,
                 allow_duplicate, show_live_result, show_voter_names, status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
             """,
             (
                 title,
                 description,
-                created_by,
+                created_nickname,
                 start_dt.astimezone(UTC).isoformat(),
                 end_dt.astimezone(UTC).isoformat(),
                 1,
