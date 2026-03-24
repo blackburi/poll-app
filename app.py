@@ -31,6 +31,17 @@ def get_db():
     return g.db
 
 
+@app.before_request
+def ensure_db():
+    db = get_db()
+    try:
+        db.execute("SELECT 1 FROM polls LIMIT 1")
+    except Exception:
+        with app.open_resource('schema.sql') as f:
+            db.executescript(f.read().decode('utf-8'))
+            db.commit()
+
+
 @app.teardown_appcontext
 def close_db(_error=None):
     db = g.pop('db', None)
