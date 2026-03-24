@@ -37,9 +37,11 @@ def ensure_db():
     try:
         db.execute("SELECT 1 FROM polls LIMIT 1")
     except Exception:
-        with app.open_resource('schema.sql') as f:
-            db.executescript(f.read().decode('utf-8'))
-            db.commit()
+        import os
+        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+        with open(schema_path, 'r', encoding='utf-8') as f:
+            db.executescript(f.read())
+        db.commit()
 
 
 @app.teardown_appcontext
