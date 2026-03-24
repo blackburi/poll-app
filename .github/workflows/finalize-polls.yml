@@ -1,0 +1,20 @@
+name: finalize-polls
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-finalize-endpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call finalize endpoint
+        env:
+          FINALIZE_URL: ${{ secrets.FINALIZE_URL }}
+        run: |
+          if [ -z "$FINALIZE_URL" ]; then
+            echo "FINALIZE_URL secret is missing"
+            exit 1
+          fi
+          curl -fsSL "$FINALIZE_URL"

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: public-poll-board
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FINALIZE_TOKEN
+        generateValue: true
+      - key: ADMIN_NICKNAME
+        value: 관리자

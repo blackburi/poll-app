@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}{{ poll['title'] }}{% endblock %}
+{% block content %}
+<section class="card poll-header">
+  <div class="section-title-row">
+    <div>
+      <h1>{{ poll['title'] }}</h1>
+      <p class="muted">개설자: {{ poll['created_by'] }} · 기간: {{ start_at_display }} ~ {{ end_at_display }}</p>
+    </div>
+    <span class="status {{ 'status-closed' if is_closed else 'status-open' }}">
+      {{ '종료됨' if is_closed else '진행 중' }}
+    </span>
+  </div>
+  {% if poll['description'] %}
+    <p>{{ poll['description'] }}</p>
+  {% endif %}
+  <p class="share-box">공유 링크: <input type="text" value="{{ request.url }}" readonly onclick="this.select()"></p>
+</section>
+
+<section class="grid two-col">
+  <div class="card">
+    <h2>투표하기</h2>
+    <form method="post" action="{{ url_for('submit_vote', poll_id=poll['id']) }}" class="form-grid">
+      <label class="full">
+        <span>닉네임</span>
+        <input type="text" name="nickname" placeholder="예: 대재" required {{ 'disabled' if is_closed else '' }}>
+      </label>
+
+      <label class="full">
+        <span>투표 코멘트 (선택)</span>
+        <input type="text" name="comment" placeholder="예: 부캐는 22시만 가능" {{ 'disabled' if is_closed else '' }}>
+      </label>
+
+      <div class="full option-checks">
+        <span>시간대 선택 (중복 허용, 같은 닉네임으로 같은 항목은 1번만)</span>
+        {% for option in options %}
+          <label class="option-check">
+            <input type="checkbox" name="option_ids" value="{{ option['id'] }}" {{ 'disabled' if is_closed else '' }}>
+            <span>{{ option['text'] }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="full actions">
+        <button class="button" type="submit" {{ 'disabled' if is_closed else '' }}>투표 제출</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title-row">
+      <h2>현재 결과</h2>
+      <span class="muted">총 {{ total_votes }}표</span>
+    </div>
+    {% if poll['show_live_result'] %}
+      <div class="results-stack">
+        {% for option in options %}
+          <div class="result-card">
+            <div class="section-title-row">
+              <strong>{{ option['text'] }}</strong>
+              <span>{{ option['count'] }}표</span>
+            </div>
+            {% if option['votes'] %}
+              <ul class="vote-list">
+                {% for vote in option['votes'] %}
+                  <li>
+                    {% if poll['show_voter_names'] %}
+                      <strong>{{ vote['nickname'] }}</strong>
+                    {% else %}
+                      <strong>익명</strong>
+                    {% endif %}
+                    {% if vote['comment'] %}
+                      <span class="muted">— {{ vote['comment'] }}</span>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="muted">아직 투표가 없어.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">현재 결과는 비공개 설정이야. 종료 후 결과만 확인 가능해.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="grid two-col">
+  <div class="card">
+    <h2>댓글 남기기</h2>
+    <form method="post" action="{{ url_for('submit_comment', poll_id=poll['id']) }}" class="form-grid">
+      <label class="full">
+        <span>닉네임</span>
+        <input type="text" name="nickname" placeholder="예: 대재" required>
+      </label>
+      <label class="full">
+        <span>댓글</span>
+        <textarea name="content" rows="4" placeholder="예: 본캐는 21시 가능, 부캐는 22시도 가능" required></textarea>
+      </label>
+      <div class="full actions">
+        <button class="button secondary" type="submit">댓글 등록</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="section-title-row">
+      <h2>댓글</h2>
+      <span class="muted">{{ comments|length }}개</span>
+    </div>
+    {% if comments %}
+      <ul class="comment-list">
+        {% for comment in comments %}
+          <li class="comment-item">
+            <div class="section-title-row">
+              <strong>{{ comment['nickname'] }}</strong>
+              <span class="muted">{{ comment['created_at'][:16].replace('T', ' ') }}</span>
+            </div>
+            <p>{{ comment['content'] }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">아직 댓글이 없어.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

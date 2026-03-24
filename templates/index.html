@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}공개 투표판{% endblock %}
+{% block content %}
+<section class="hero card">
+  <h1>로그인 없이 참여하는 공개 투표</h1>
+  <p>닉네임만 입력해서 투표하고, 진행 중인 현황과 댓글까지 모두 공유할 수 있어.</p>
+  <a class="button" href="{{ url_for('create_poll') }}">투표 만들기</a>
+</section>
+
+<section class="grid two-col">
+  <div class="card">
+    <div class="section-title-row">
+      <h2>진행 중인 투표</h2>
+      <span class="muted">{{ open_polls|length }}개</span>
+    </div>
+    {% if open_polls %}
+      <div class="card-list">
+        {% for poll in open_polls %}
+          <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
+            <strong>{{ poll['title'] }}</strong>
+            <span>종료: {{ to_display(poll['end_at']) }}</span>
+            <span>개설자: {{ poll['created_by'] }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">아직 진행 중인 투표가 없어.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="section-title-row">
+      <h2>최근 종료된 투표</h2>
+      <span class="muted">최대 20개</span>
+    </div>
+    {% if closed_polls %}
+      <div class="card-list">
+        {% for poll in closed_polls %}
+          <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
+            <strong>{{ poll['title'] }}</strong>
+            <span>종료: {{ to_display(poll['end_at']) }}</span>
+            <span>개설자: {{ poll['created_by'] }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">종료된 투표가 아직 없어.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
