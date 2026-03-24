@@ -117,6 +117,7 @@ Render의 Environment에서 아래 값을 설정합니다.
 - `FINALIZE_TOKEN`
 - `DISCORD_WEBHOOK_URL`
 - `ADMIN_NICKNAME`
+- `ADMIN_CODES`
 
 ### 4) 배포 완료 후 URL 확인
 
