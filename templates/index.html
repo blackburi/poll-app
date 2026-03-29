@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block title %}투표 앱{% endblock %}
@@ -12,7 +13,15 @@
         <p class="muted">현재 진행 중인 투표, 시작 예정 투표, 종료된 투표를 한 번에 볼 수 있어.</p>
       </div>
       <div class="action-row">
-        <a class="btn btn-primary" href="{{ url_for('create_poll') }}">새 투표 만들기</a>
+        <button
+          type="button"
+          class="btn btn-primary"
+          data-admin-action="create"
+          data-success-mode="redirect"
+          data-modal-description="새 투표를 만들려면 관리자 비밀번호를 입력해줘."
+        >
+          새 투표 만들기
+        </button>
       </div>
     </div>
   </section>
@@ -35,7 +44,7 @@
                 </h3>
               </div>
             </div>
-            <div class="poll-meta">
+            <div class="poll-meta poll-meta--three">
               <div><strong>개설자</strong><br><span class="muted">{{ poll['creator_nickname'] }}</span></div>
               <div><strong>시작</strong><br><span class="muted">{{ to_display(poll['start_at']) }}</span></div>
               <div><strong>종료</strong><br><span class="muted">{{ to_display(poll['end_at']) }}</span></div>
@@ -72,7 +81,7 @@
                 </h3>
               </div>
             </div>
-            <div class="poll-meta">
+            <div class="poll-meta poll-meta--three">
               <div><strong>개설자</strong><br><span class="muted">{{ poll['creator_nickname'] }}</span></div>
               <div><strong>시작</strong><br><span class="muted">{{ to_display(poll['start_at']) }}</span></div>
               <div><strong>종료</strong><br><span class="muted">{{ to_display(poll['end_at']) }}</span></div>

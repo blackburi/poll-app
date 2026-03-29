@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block title %}{{ poll['title'] }}{% endblock %}
@@ -28,6 +29,56 @@
       <div><strong>종료</strong><br><span class="muted">{{ end_at_display }}</span></div>
       <div><strong>총 투표 수</strong><br><span class="muted">{{ total_votes }}표</span></div>
     </div>
+  </section>
+
+  <section class="section-card">
+    <div class="section-header">
+      <h2>관리자 작업</h2>
+      <div class="action-row">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          data-admin-action="edit"
+          data-poll-id="{{ poll['id'] }}"
+          data-success-mode="redirect"
+          data-modal-description="투표를 수정하려면 관리자 비밀번호를 입력해줘."
+        >
+          투표 수정
+        </button>
+        <button
+          type="button"
+          class="btn btn-secondary"
+          data-admin-action="close"
+          data-poll-id="{{ poll['id'] }}"
+          data-success-mode="submit"
+          data-submit-form="closePollForm"
+          data-confirm-message="해당 투표를 종료할까?"
+          data-modal-description="투표를 종료하려면 관리자 비밀번호를 입력해줘."
+        >
+          투표 종료
+        </button>
+        <button
+          type="button"
+          class="btn btn-danger"
+          data-admin-action="delete"
+          data-poll-id="{{ poll['id'] }}"
+          data-success-mode="submit"
+          data-submit-form="deletePollForm"
+          data-confirm-message="해당 투표를 삭제할까? 삭제 후에는 되돌릴 수 없어."
+          data-modal-description="투표를 삭제하려면 관리자 비밀번호를 입력해줘."
+        >
+          투표 삭제
+        </button>
+      </div>
+    </div>
+
+    <form id="closePollForm" method="post" action="{{ url_for('close_poll', poll_id=poll['id']) }}" class="hidden-form">
+      <input type="hidden" name="admin_code" value="">
+    </form>
+
+    <form id="deletePollForm" method="post" action="{{ url_for('delete_poll', poll_id=poll['id']) }}" class="hidden-form">
+      <input type="hidden" name="admin_code" value="">
+    </form>
   </section>
 
   <section class="section-card">
@@ -100,50 +151,13 @@
       {% endif %}
     </section>
 
-    <section class="form-card">
-      <h2>관리자 작업</h2>
-      <p class="muted">관리자 닉네임과 관리자 코드를 입력해야 종료나 삭제가 가능해.</p>
+    <section class="section-card">
+      <div class="section-header">
+        <h2>댓글</h2>
+        <span class="badge">{{ comments|length }}개</span>
+      </div>
 
-      <form method="post" action="{{ url_for('close_poll', poll_id=poll['id']) }}" style="margin-bottom: 18px;">
-        <div class="form-row">
-          <label for="close_admin_nickname">관리자 닉네임</label>
-          <input id="close_admin_nickname" name="admin_nickname" type="text" value="{{ admin_nickname }}" required>
-        </div>
-        <div class="form-row">
-          <label for="close_admin_code">관리자 코드</label>
-          <input id="close_admin_code" name="admin_code" type="password" required>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-secondary">투표 종료</button>
-        </div>
-      </form>
-
-      <hr>
-
-      <form method="post" action="{{ url_for('delete_poll', poll_id=poll['id']) }}" onsubmit="return confirm('정말 이 투표를 삭제할까?');">
-        <div class="form-row">
-          <label for="delete_admin_nickname">관리자 닉네임</label>
-          <input id="delete_admin_nickname" name="admin_nickname" type="text" value="{{ admin_nickname }}" required>
-        </div>
-        <div class="form-row">
-          <label for="delete_admin_code">관리자 코드</label>
-          <input id="delete_admin_code" name="admin_code" type="password" required>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn btn-danger">투표 삭제</button>
-        </div>
-      </form>
-    </section>
-  </div>
-
-  <section class="section-card">
-    <div class="section-header">
-      <h2>댓글</h2>
-      <span class="badge">{{ comments|length }}개</span>
-    </div>
-
-    <div class="grid-2">
-      <div>
+      <div class="grid">
         <form method="post" action="{{ url_for('submit_comment', poll_id=poll['id']) }}">
           <div class="form-row">
             <label for="comment_nickname">닉네임</label>
@@ -157,9 +171,7 @@
             <button type="submit" class="btn btn-primary">댓글 등록</button>
           </div>
         </form>
-      </div>
 
-      <div>
         {% if comments %}
           <div class="comment-list">
             {% for comment in comments %}
@@ -176,7 +188,7 @@
           <div class="empty-state">아직 댓글이 없어.</div>
         {% endif %}
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 </div>
 {% endblock %}

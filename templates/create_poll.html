@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block title %}투표 생성{% endblock %}
@@ -6,39 +7,13 @@
 <section class="form-card">
   <div class="section-header">
     <div>
-      <span class="badge">관리자 전용</span>
+      <span class="badge">관리자 인증 완료</span>
       <h1 style="margin:14px 0 8px;">새 투표 생성</h1>
-      <p class="muted">투표 생성 버튼을 누를 때 관리자 닉네임과 관리자 코드를 함께 확인해.</p>
+      <p class="muted">여기서는 제목, 설명, 기간, 항목을 입력해서 새 투표를 만들 수 있어.</p>
     </div>
   </div>
 
   <form method="post" action="{{ url_for('create_poll') }}">
-    <div class="grid-2">
-      <div class="form-row">
-        <label for="admin_nickname">관리자 닉네임</label>
-        <input
-          id="admin_nickname"
-          name="admin_nickname"
-          type="text"
-          value="{{ admin_nickname }}"
-          readonly
-        >
-      </div>
-
-      <div class="form-row">
-        <label for="admin_code">관리자 비밀번호</label>
-        <input
-          id="admin_code"
-          name="admin_code"
-          type="password"
-          placeholder="ADMIN_CODES 중 하나 입력"
-          required
-        >
-      </div>
-    </div>
-
-    <hr>
-
     <div class="form-row">
       <label for="title">투표 제목</label>
       <input
@@ -58,7 +33,7 @@
           id="creator_nickname"
           name="creator_nickname"
           type="text"
-          value="{{ form_data.get('creator_nickname', admin_nickname) }}"
+          value="{{ form_data.get('creator_nickname', '') }}"
           placeholder="비워두면 관리자 닉네임으로 저장"
         >
       </div>

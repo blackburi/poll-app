@@ -1,0 +1,101 @@
+
+{% extends "base.html" %}
+
+{% block title %}투표 수정{% endblock %}
+
+{% block content %}
+<section class="form-card">
+  <div class="section-header">
+    <div>
+      <span class="badge">관리자 인증 완료</span>
+      <h1 style="margin:14px 0 8px;">투표 수정</h1>
+      <p class="muted">제목과 설명을 수정하고, 항목을 추가·수정·삭제할 수 있어.</p>
+    </div>
+    <div class="action-row">
+      <a class="btn btn-secondary" href="{{ url_for('view_poll', poll_id=poll['id']) }}">상세로 돌아가기</a>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('edit_poll', poll_id=poll['id']) }}">
+    <div class="form-row">
+      <label for="title">투표 제목</label>
+      <input
+        id="title"
+        name="title"
+        type="text"
+        value="{{ form_data.get('title', poll['title']) }}"
+        required
+      >
+    </div>
+
+    <div class="form-row">
+      <label for="description">설명</label>
+      <input
+        id="description"
+        name="description"
+        type="text"
+        value="{{ form_data.get('description', poll['description'] or '') }}"
+        placeholder="선택 사항"
+      >
+    </div>
+
+    <div class="form-row">
+      <label>투표 항목</label>
+      <div id="optionEditor" class="option-editor">
+        {% for row in form_data.get('option_rows', []) %}
+          <div class="option-editor__row">
+            <input type="hidden" name="option_id" value="{{ row['id'] }}">
+            <input type="text" name="option_text" value="{{ row['text'] }}" placeholder="항목 내용을 입력해줘. 비우면 삭제돼.">
+            <button type="button" class="btn btn-ghost option-remove-btn">행 비우기</button>
+          </div>
+        {% endfor %}
+      </div>
+      <small class="helper-text">기존 항목 내용을 바꾸면 수정, 새 행을 추가하면 항목 추가, 행을 비우면 삭제로 처리돼. 삭제된 항목에 달린 기존 투표는 함께 제거돼.</small>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-secondary" id="addOptionRow">항목 추가</button>
+      <button type="submit" class="btn btn-primary">수정 저장</button>
+    </div>
+  </form>
+</section>
+
+<template id="newOptionTemplate">
+  <div class="option-editor__row">
+    <input type="hidden" name="option_id" value="">
+    <input type="text" name="option_text" value="" placeholder="새 항목 내용을 입력해줘.">
+    <button type="button" class="btn btn-ghost option-remove-btn">행 비우기</button>
+  </div>
+</template>
+
+<script>
+  (() => {
+    const editor = document.getElementById('optionEditor');
+    const addButton = document.getElementById('addOptionRow');
+    const template = document.getElementById('newOptionTemplate');
+
+    function bindRemoveButtons(scope) {
+      scope.querySelectorAll('.option-remove-btn').forEach((button) => {
+        if (button.dataset.bound === 'true') return;
+        button.dataset.bound = 'true';
+        button.addEventListener('click', () => {
+          const row = button.closest('.option-editor__row');
+          const textInput = row.querySelector('input[name="option_text"]');
+          textInput.value = '';
+          textInput.focus();
+        });
+      });
+    }
+
+    addButton.addEventListener('click', () => {
+      const fragment = template.content.cloneNode(true);
+      editor.appendChild(fragment);
+      bindRemoveButtons(editor);
+      const rows = editor.querySelectorAll('.option-editor__row');
+      rows[rows.length - 1].querySelector('input[name="option_text"]').focus();
+    });
+
+    bindRemoveButtons(editor);
+  })();
+</script>
+{% endblock %}

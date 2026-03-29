@@ -2,16 +2,28 @@
 import os
 import sqlite3
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, abort, flash, g, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    abort,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'polls.db')
 KST = ZoneInfo('Asia/Seoul')
 UTC = timezone.utc
+ADMIN_SESSION_MINUTES = 5
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-me')
@@ -191,6 +203,39 @@ def build_poll_view_model(poll_id: int):
     }
 
 
+def validate_admin_code(admin_code: str):
+    if admin_code not in app.config['ADMIN_CODES']:
+        return False, '잘못된 비밀번호가 입력되었어.'
+    return True, 'ok'
+
+
+def grant_admin_access(scope: str):
+    expires_at = datetime.now(UTC) + timedelta(minutes=ADMIN_SESSION_MINUTES)
+    session[scope] = expires_at.isoformat()
+
+
+def has_admin_access(scope: str):
+    expires_at = session.get(scope)
+    if not expires_at:
+        return False
+    try:
+        expires_dt = from_iso(expires_at)
+    except ValueError:
+        session.pop(scope, None)
+        return False
+    if expires_dt <= datetime.now(UTC):
+        session.pop(scope, None)
+        return False
+    return True
+
+
+def ensure_admin_access(scope: str, fail_redirect: str, **kwargs):
+    if has_admin_access(scope):
+        return True
+    flash('관리자 인증이 필요해. 버튼을 다시 눌러서 비밀번호를 입력해줘.', 'error')
+    return redirect(url_for(fail_redirect, **kwargs))
+
+
 def format_created_message(poll_id: int) -> str:
     data = build_poll_view_model(poll_id)
     poll = data['poll']
@@ -284,28 +329,64 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
     return sent_ids
 
 
-def require_admin_or_flash():
-    admin_nickname = request.form.get('admin_nickname', '').strip()
-    admin_code = request.form.get('admin_code', '').strip()
-
-    if admin_nickname != app.config['ADMIN_NICKNAME']:
-        flash('관리자 닉네임이 올바르지 않아.', 'error')
-        return None
-
-    if admin_code not in app.config['ADMIN_CODES']:
-        flash('관리자 코드가 올바르지 않아.', 'error')
-        return None
-
-    return True
-
-
 def render_create_poll(form_data=None):
     form_data = form_data or {}
+    return render_template('create_poll.html', form_data=form_data)
+
+
+def render_edit_poll(poll_id: int, form_data=None):
+    poll = fetch_poll_or_404(poll_id)
+    db = get_db()
+    option_rows = db.execute(
+        'SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id',
+        (poll_id,),
+    ).fetchall()
+
+    prepared_option_rows = []
+    if form_data and form_data.get('option_rows'):
+        prepared_option_rows = form_data['option_rows']
+    else:
+        prepared_option_rows = [{'id': row['id'], 'text': row['option_text']} for row in option_rows]
+
     return render_template(
-        'create_poll.html',
-        admin_nickname=app.config['ADMIN_NICKNAME'],
-        form_data=form_data,
+        'edit_poll.html',
+        poll=poll,
+        form_data=form_data or {
+            'title': poll['title'],
+            'description': poll['description'] or '',
+            'option_rows': prepared_option_rows,
+        },
     )
+
+
+@app.route('/admin/verify', methods=['POST'])
+def verify_admin():
+    admin_code = request.form.get('admin_code', '').strip()
+    action = request.form.get('action', '').strip()
+    poll_id = request.form.get('poll_id', '').strip()
+
+    ok, message = validate_admin_code(admin_code)
+    if not ok:
+        return jsonify({'ok': False, 'message': message}), 200
+
+    if action == 'create':
+        grant_admin_access('admin_create')
+        return jsonify({'ok': True, 'redirect_url': url_for('create_poll')})
+
+    if action == 'edit':
+        if not poll_id.isdigit():
+            return jsonify({'ok': False, 'message': '수정할 투표 정보가 올바르지 않아.'}), 400
+        fetch_poll_or_404(int(poll_id))
+        grant_admin_access(f'admin_edit_{poll_id}')
+        return jsonify({'ok': True, 'redirect_url': url_for('edit_poll', poll_id=int(poll_id))})
+
+    if action in {'close', 'delete'}:
+        if not poll_id.isdigit():
+            return jsonify({'ok': False, 'message': '대상 투표 정보가 올바르지 않아.'}), 400
+        fetch_poll_or_404(int(poll_id))
+        return jsonify({'ok': True, 'message': '인증이 완료됐어.'})
+
+    return jsonify({'ok': False, 'message': '지원하지 않는 관리자 작업이야.'}), 400
 
 
 @app.route('/')
@@ -339,8 +420,11 @@ def index():
 
 @app.route('/polls/new', methods=['GET', 'POST'])
 def create_poll():
+    auth = ensure_admin_access('admin_create', 'index')
+    if auth is not True:
+        return auth
+
     if request.method == 'POST':
-        admin_code = request.form.get('admin_code', '').strip()
         title = request.form.get('title', '').strip()
         creator_nickname = request.form.get('creator_nickname', '').strip() or app.config['ADMIN_NICKNAME']
         options_text = request.form.get('options_text', '').strip()
@@ -356,10 +440,6 @@ def create_poll():
             'start_at': start_at,
             'end_at': end_at,
         }
-
-        if admin_code not in app.config['ADMIN_CODES']:
-            flash('관리자 비밀번호가 올바르지 않아.', 'error')
-            return render_create_poll(form_data)
 
         options = normalize_multiline_options(options_text)
         if not title:
@@ -410,6 +490,7 @@ def create_poll():
             )
 
         db.commit()
+        session.pop('admin_create', None)
 
         try:
             send_webhook_message(format_created_message(poll_id))
@@ -421,6 +502,109 @@ def create_poll():
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     return render_create_poll()
+
+
+@app.route('/polls/<int:poll_id>/edit', methods=['GET', 'POST'])
+def edit_poll(poll_id: int):
+    auth = ensure_admin_access(f'admin_edit_{poll_id}', 'view_poll', poll_id=poll_id)
+    if auth is not True:
+        return auth
+
+    fetch_poll_or_404(poll_id)
+
+    if request.method == 'POST':
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+
+        option_ids = request.form.getlist('option_id')
+        option_texts = request.form.getlist('option_text')
+
+        option_rows = []
+        normalized_seen = set()
+        normalized_count = 0
+        for raw_id, raw_text in zip(option_ids, option_texts):
+            cleaned_text = raw_text.strip()
+            option_id = raw_id.strip()
+            option_rows.append({'id': option_id, 'text': cleaned_text})
+
+            if cleaned_text:
+                if cleaned_text in normalized_seen:
+                    flash(f'"{cleaned_text}" 항목이 중복되었어.', 'error')
+                    return render_edit_poll(
+                        poll_id,
+                        {'title': title, 'description': description, 'option_rows': option_rows},
+                    )
+                normalized_seen.add(cleaned_text)
+                normalized_count += 1
+
+        if not title:
+            flash('투표 제목을 입력해줘.', 'error')
+            return render_edit_poll(
+                poll_id,
+                {'title': title, 'description': description, 'option_rows': option_rows},
+            )
+
+        if normalized_count < 2:
+            flash('투표 항목은 최소 2개 이상 남아 있어야 해.', 'error')
+            return render_edit_poll(
+                poll_id,
+                {'title': title, 'description': description, 'option_rows': option_rows},
+            )
+
+        db = get_db()
+        existing_rows = db.execute(
+            'SELECT id FROM poll_options WHERE poll_id = ? ORDER BY id',
+            (poll_id,),
+        ).fetchall()
+        existing_ids = {str(row['id']) for row in existing_rows}
+        delete_option_ids = []
+
+        for raw_id, raw_text in zip(option_ids, option_texts):
+            option_id = raw_id.strip()
+            cleaned_text = raw_text.strip()
+
+            if option_id and option_id not in existing_ids:
+                continue
+
+            if option_id and cleaned_text:
+                db.execute(
+                    'UPDATE poll_options SET option_text = ? WHERE id = ? AND poll_id = ?',
+                    (cleaned_text, int(option_id), poll_id),
+                )
+            elif option_id and not cleaned_text:
+                delete_option_ids.append(int(option_id))
+            elif not option_id and cleaned_text:
+                db.execute(
+                    'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (?, ?, ?)',
+                    (poll_id, cleaned_text, now_utc_iso()),
+                )
+
+        if delete_option_ids:
+            placeholders = ','.join('?' for _ in delete_option_ids)
+            db.execute(
+                f'DELETE FROM votes WHERE poll_id = ? AND option_id IN ({placeholders})',
+                (poll_id, *delete_option_ids),
+            )
+            db.execute(
+                f'DELETE FROM poll_options WHERE poll_id = ? AND id IN ({placeholders})',
+                (poll_id, *delete_option_ids),
+            )
+
+        db.execute(
+            'UPDATE polls SET title = ?, description = ? WHERE id = ?',
+            (title, description, poll_id),
+        )
+        db.commit()
+        session.pop(f'admin_edit_{poll_id}', None)
+
+        if delete_option_ids:
+            flash('투표를 수정했어. 삭제된 항목에 있던 기존 투표는 함께 제거됐어.', 'success')
+        else:
+            flash('투표를 수정했어.', 'success')
+
+        return redirect(url_for('view_poll', poll_id=poll_id))
+
+    return render_edit_poll(poll_id)
 
 
 @app.route('/polls/<int:poll_id>')
@@ -513,7 +697,10 @@ def submit_comment(poll_id: int):
 @app.route('/polls/<int:poll_id>/close', methods=['POST'])
 def close_poll(poll_id: int):
     poll = fetch_poll_or_404(poll_id)
-    if require_admin_or_flash() is None:
+    admin_code = request.form.get('admin_code', '').strip()
+    ok, message = validate_admin_code(admin_code)
+    if not ok:
+        flash(message, 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     if poll_state(poll) == 'closed':
@@ -522,7 +709,10 @@ def close_poll(poll_id: int):
 
     db = get_db()
     now_iso = kst_now().astimezone(UTC).isoformat()
-    db.execute("UPDATE polls SET end_at = ?, status = 'open', result_sent = 0 WHERE id = ?", (now_iso, poll_id))
+    db.execute(
+        "UPDATE polls SET end_at = ?, status = 'open', result_sent = 0 WHERE id = ?",
+        (now_iso, poll_id),
+    )
     db.commit()
 
     try:
@@ -538,7 +728,10 @@ def close_poll(poll_id: int):
 @app.route('/polls/<int:poll_id>/delete', methods=['POST'])
 def delete_poll(poll_id: int):
     poll = fetch_poll_or_404(poll_id)
-    if require_admin_or_flash() is None:
+    admin_code = request.form.get('admin_code', '').strip()
+    ok, message = validate_admin_code(admin_code)
+    if not ok:
+        flash(message, 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     db = get_db()

@@ -1,9 +1,11 @@
+
+{% set page_title = self.title()|trim if self.title is defined else '투표 앱' %}
 <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}투표 앱{% endblock %}</title>
+  <title>{{ page_title or '투표 앱' }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,7 +19,14 @@
         <a href="{{ url_for('index') }}" class="brand">투표 앱</a>
         <nav class="site-nav">
           <a href="{{ url_for('index') }}">홈</a>
-          <a href="{{ url_for('create_poll') }}">투표 생성</a>
+          <button
+            type="button"
+            class="nav-admin-trigger"
+            data-admin-action="create"
+            data-success-mode="redirect"
+          >
+            새 투표 만들기
+          </button>
         </nav>
       </div>
     </header>
@@ -36,5 +45,155 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  <div class="admin-modal" id="adminModal" aria-hidden="true">
+    <div class="admin-modal__backdrop" data-close-admin-modal></div>
+    <div class="admin-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="adminModalTitle">
+      <div class="admin-modal__header">
+        <h2 id="adminModalTitle">관리자 비밀번호 확인</h2>
+        <button type="button" class="modal-close" data-close-admin-modal aria-label="닫기">×</button>
+      </div>
+      <p class="muted admin-modal__description" id="adminModalDescription">관리자 비밀번호를 입력해줘.</p>
+      <form id="adminVerifyForm">
+        <input type="hidden" name="action" id="adminModalAction">
+        <input type="hidden" name="poll_id" id="adminModalPollId">
+        <div class="form-row">
+          <label for="adminModalCode">관리자 비밀번호</label>
+          <input id="adminModalCode" name="admin_code" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="modal-error" id="adminModalError"></div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">확인</button>
+          <button type="button" class="btn btn-secondary" data-close-admin-modal>취소</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const modal = document.getElementById('adminModal');
+      const form = document.getElementById('adminVerifyForm');
+      const codeInput = document.getElementById('adminModalCode');
+      const actionInput = document.getElementById('adminModalAction');
+      const pollIdInput = document.getElementById('adminModalPollId');
+      const errorBox = document.getElementById('adminModalError');
+      const descriptionBox = document.getElementById('adminModalDescription');
+
+      let pendingConfig = null;
+
+      function openAdminModal(config) {
+        pendingConfig = config || {};
+        actionInput.value = pendingConfig.action || '';
+        pollIdInput.value = pendingConfig.pollId || '';
+        codeInput.value = '';
+        errorBox.textContent = '';
+        descriptionBox.textContent = pendingConfig.description || '관리자 비밀번호를 입력해줘.';
+        modal.classList.add('is-open');
+        modal.setAttribute('aria-hidden', 'false');
+        window.setTimeout(() => codeInput.focus(), 10);
+      }
+
+      function closeAdminModal() {
+        modal.classList.remove('is-open');
+        modal.setAttribute('aria-hidden', 'true');
+        pendingConfig = null;
+        form.reset();
+        errorBox.textContent = '';
+      }
+
+      async function verifyAdminCode(adminCode, action, pollId) {
+        const body = new URLSearchParams();
+        body.set('admin_code', adminCode);
+        body.set('action', action || '');
+        if (pollId) {
+          body.set('poll_id', pollId);
+        }
+
+        const response = await fetch('{{ url_for("verify_admin") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        });
+        return response.json();
+      }
+
+      document.querySelectorAll('[data-admin-action]').forEach((button) => {
+        button.addEventListener('click', () => {
+          openAdminModal({
+            action: button.dataset.adminAction,
+            pollId: button.dataset.pollId || '',
+            description: button.dataset.modalDescription || '관리자 비밀번호를 입력해줘.',
+            successMode: button.dataset.successMode || 'redirect',
+            targetUrl: button.dataset.targetUrl || '',
+            submitForm: button.dataset.submitForm || '',
+            confirmMessage: button.dataset.confirmMessage || ''
+          });
+        });
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorBox.textContent = '';
+
+        const adminCode = codeInput.value.trim();
+        if (!adminCode) {
+          errorBox.textContent = '관리자 비밀번호를 입력해줘.';
+          codeInput.focus();
+          return;
+        }
+
+        try {
+          const result = await verifyAdminCode(adminCode, actionInput.value, pollIdInput.value);
+          if (!result.ok) {
+            errorBox.textContent = result.message || '관리자 인증에 실패했어.';
+            codeInput.focus();
+            codeInput.select();
+            return;
+          }
+
+          const config = pendingConfig || {};
+          if (config.successMode === 'submit') {
+            if (config.confirmMessage && !window.confirm(config.confirmMessage)) {
+              return;
+            }
+            const targetForm = document.getElementById(config.submitForm);
+            if (!targetForm) {
+              errorBox.textContent = '요청을 처리할 폼을 찾지 못했어.';
+              return;
+            }
+            const hiddenCodeInput = targetForm.querySelector('input[name="admin_code"]');
+            if (hiddenCodeInput) {
+              hiddenCodeInput.value = adminCode;
+            }
+            closeAdminModal();
+            targetForm.submit();
+            return;
+          }
+
+          closeAdminModal();
+          window.location.href = result.redirect_url || config.targetUrl || window.location.href;
+        } catch (error) {
+          errorBox.textContent = '서버와 통신하는 중 오류가 발생했어.';
+        }
+      });
+
+      document.querySelectorAll('[data-close-admin-modal]').forEach((button) => {
+        button.addEventListener('click', closeAdminModal);
+      });
+
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+          closeAdminModal();
+        }
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+          closeAdminModal();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
