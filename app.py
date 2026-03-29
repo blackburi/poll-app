@@ -331,17 +331,19 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
     return sent_ids
 
 
+def run_finalize_due_polls():
+    with app.app_context():
+        finalize_due_polls(force=False)
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
-
     scheduler.add_job(
-        func=finalize_due_polls,
+        func=run_finalize_due_polls,
         trigger="interval",
-        seconds=60,  # 1분마다 실행
+        seconds=60,
         id="finalize_polls",
         replace_existing=True
     )
-
     scheduler.start()
 
 
