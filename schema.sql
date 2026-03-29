@@ -22,15 +22,21 @@ CREATE TABLE IF NOT EXISTS poll_options (
     FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE
 );
 
+DROP TABLE IF EXISTS votes;
+
 CREATE TABLE IF NOT EXISTS votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     poll_id INTEGER NOT NULL,
     option_id INTEGER NOT NULL,
     nickname TEXT NOT NULL,
+    representative_nickname TEXT NOT NULL,
     created_at TEXT NOT NULL,
     FOREIGN KEY (poll_id) REFERENCES polls (id) ON DELETE CASCADE,
     FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_poll_rep
+ON votes (poll_id, representative_nickname);
 
 CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, abort, flash, g, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, url_for, session
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'polls.db')
@@ -37,7 +37,6 @@ def ensure_db():
     try:
         db.execute("SELECT 1 FROM polls LIMIT 1")
     except Exception:
-        import os
         schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
         with open(schema_path, 'r', encoding='utf-8') as f:
             db.executescript(f.read())
@@ -62,6 +61,10 @@ def init_db():
 
 def kst_now():
     return datetime.now(KST)
+
+
+def now_utc_iso():
+    return datetime.now(UTC).isoformat()
 
 
 def to_kst(dt_str: str) -> datetime:
@@ -114,7 +117,10 @@ def fetch_poll_detail(poll_id: int):
     poll = fetch_poll_or_404(poll_id)
     options = db.execute(
         """
-        SELECT * FROM poll_options WHERE poll_id = ? ORDER BY display_order, id
+        SELECT *
+        FROM poll_options
+        WHERE poll_id = ?
+        ORDER BY id
         """,
         (poll_id,),
     ).fetchall()
@@ -130,7 +136,8 @@ def fetch_poll_detail(poll_id: int):
     ).fetchall()
     comments = db.execute(
         """
-        SELECT * FROM comments
+        SELECT *
+        FROM comments
         WHERE poll_id = ?
         ORDER BY created_at DESC, id DESC
         """,
@@ -210,7 +217,10 @@ def format_final_message(poll_id: int) -> str:
         lines.append(f"- {option['text']} ({option['count']}표)")
         if option['votes']:
             for vote in option['votes']:
-                lines.append(f"  · {vote['nickname']}")
+                if vote['nickname'] == vote['representative_nickname']:
+                    lines.append(f"  · {vote['nickname']}")
+                else:
+                    lines.append(f"  · {vote['nickname']} (대표: {vote['representative_nickname']})")
         else:
             lines.append('  · 없음')
 
@@ -317,8 +327,24 @@ def index():
     )
 
 
+@app.route('/admin-check', methods=['POST'])
+def admin_check():
+    admin_code = request.form.get('admin_code', '').strip()
+
+    if admin_code in app.config['ADMIN_CODES']:
+        session['can_create_poll'] = True
+        return redirect(url_for('create_poll'))
+
+    flash('잘못된 관리자 비밀번호입니다.', 'error')
+    return redirect(url_for('index'))
+
+
 @app.route('/polls/new', methods=['GET', 'POST'])
 def create_poll():
+    if not session.get('can_create_poll'):
+        flash('관리자 비밀번호 확인이 필요해.', 'error')
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         title = request.form.get('title', '').strip()
         creator_nickname = request.form.get('creator_nickname', '').strip() or app.config['ADMIN_NICKNAME']
@@ -360,18 +386,22 @@ def create_poll():
                 creator_nickname,
                 start_dt.astimezone(UTC).isoformat(),
                 end_dt.astimezone(UTC).isoformat(),
-                1,
+                0,
                 show_live_result,
                 show_voter_names,
             ),
         )
         poll_id = cursor.lastrowid
-        for idx, option in enumerate(options, start=1):
+
+        created_at = now_utc_iso()
+        for option in options:
             db.execute(
-                'INSERT INTO poll_options (poll_id, option_text, display_order) VALUES (?, ?, ?)',
-                (poll_id, option, idx),
+                'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (?, ?, ?)',
+                (poll_id, option, created_at),
             )
+
         db.commit()
+        session.pop('can_create_poll', None)
 
         try:
             send_webhook_message(format_created_message(poll_id))
@@ -407,46 +437,43 @@ def submit_vote(poll_id: int):
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     nickname = request.form.get('nickname', '').strip()
-    option_ids = request.form.getlist('option_ids')
+    representative_nickname = request.form.get('representative_nickname', '').strip()
+    option_id = request.form.get('option_id', '').strip()
 
     if not nickname:
         flash('닉네임을 입력해줘.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
-    if not option_ids:
-        flash('최소 1개 항목은 선택해야 해.', 'error')
+    if not representative_nickname:
+        flash('대표 캐릭터 닉네임을 입력해줘.', 'error')
+        return redirect(url_for('view_poll', poll_id=poll_id))
+    if not option_id:
+        flash('투표 항목을 선택해줘.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     db = get_db()
-    valid_options = {
-        str(row['id'])
-        for row in db.execute('SELECT id FROM poll_options WHERE poll_id = ?', (poll_id,)).fetchall()
-    }
+    valid_option = db.execute(
+        'SELECT id FROM poll_options WHERE poll_id = ? AND id = ?',
+        (poll_id, option_id),
+    ).fetchone()
 
-    inserted = 0
-    for option_id in option_ids:
-        if option_id not in valid_options:
-            continue
+    if not valid_option:
+        flash('유효하지 않은 투표 항목이야.', 'error')
+        return redirect(url_for('view_poll', poll_id=poll_id))
 
-        existing = db.execute(
-            'SELECT 1 FROM votes WHERE poll_id = ? AND nickname = ? AND option_id = ?',
-            (poll_id, nickname, int(option_id)),
-        ).fetchone()
-        if existing:
-            continue
-
-        db.execute(
-            'INSERT INTO votes (poll_id, option_id, nickname) VALUES (?, ?, ?)',
-            (poll_id, int(option_id), nickname),
-        )
-        inserted += 1
-
+    db.execute(
+        'DELETE FROM votes WHERE poll_id = ? AND representative_nickname = ?',
+        (poll_id, representative_nickname),
+    )
+    db.execute(
+        """
+        INSERT INTO votes (poll_id, option_id, nickname, representative_nickname, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (poll_id, int(option_id), nickname, representative_nickname, now_utc_iso()),
+    )
     db.commit()
 
-    if inserted == 0:
-        flash('선택한 항목에는 이미 전부 투표한 상태야.', 'error')
-    else:
-        flash(f'{inserted}개 항목에 투표 완료!', 'success')
-
+    flash('투표가 저장됐어. 기존 투표가 있었다면 새 투표로 갱신됐어.', 'success')
     return redirect(url_for('view_poll', poll_id=poll_id))
 
 
@@ -462,8 +489,8 @@ def submit_comment(poll_id: int):
 
     db = get_db()
     db.execute(
-        'INSERT INTO comments (poll_id, nickname, content) VALUES (?, ?, ?)',
-        (poll_id, nickname, content),
+        'INSERT INTO comments (poll_id, nickname, content, created_at) VALUES (?, ?, ?, ?)',
+        (poll_id, nickname, content, now_utc_iso()),
     )
     db.commit()
     flash('댓글이 등록됐어.', 'success')
@@ -531,4 +558,4 @@ def healthz():
 if __name__ == '__main__':
     if not os.path.exists(app.config['DATABASE']):
         init_db()
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')), debug=True)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')), debug=False)

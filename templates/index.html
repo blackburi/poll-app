@@ -1,79 +1,334 @@
-{% extends 'base.html' %}
-{% block title %}공개 투표판{% endblock %}
-{% block content %}
-<section class="hero card">
-  <h1>로그인 없이 참여하는 공개 투표</h1>
-  <p>닉네임만 입력해서 투표하고, 진행 중인 현황과 댓글까지 모두 공유할 수 있어.</p>
-  <a class="button" href="{{ url_for('create_poll') }}">투표 만들기</a>
-</section>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>투표 목록</title>
+  <style>
+      * { box-sizing: border-box; }
+      body {
+          margin: 0;
+          font-family: Arial, sans-serif;
+          background: #f5f7fb;
+          color: #222;
+      }
+      .container {
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 24px 16px 48px;
+      }
+      .topbar {
+          background: #fff;
+          border-bottom: 1px solid #e5e7eb;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+      }
+      .topbar-inner {
+          max-width: 1100px;
+          margin: 0 auto;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+      }
+      .title {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 700;
+      }
+      .actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+      }
+      .btn {
+          border: none;
+          border-radius: 10px;
+          padding: 10px 14px;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+      }
+      .btn-primary {
+          background: #2563eb;
+          color: #fff;
+      }
+      .btn-secondary {
+          background: #e5e7eb;
+          color: #111827;
+      }
+      .hero {
+          margin-top: 20px;
+          background: #fff;
+          border-radius: 16px;
+          padding: 24px;
+          box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+      }
+      .hero h2 {
+          margin: 0 0 8px;
+          font-size: 22px;
+      }
+      .hero p {
+          margin: 0;
+          color: #4b5563;
+          line-height: 1.5;
+      }
+      .section-grid {
+          margin-top: 24px;
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+      }
+      .section-card {
+          background: #fff;
+          border-radius: 16px;
+          padding: 18px;
+          box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+          min-height: 320px;
+      }
+      .section-card h3 {
+          margin: 0 0 14px;
+          font-size: 18px;
+      }
+      .poll-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+      }
+      .poll-item {
+          display: block;
+          text-decoration: none;
+          color: inherit;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 14px;
+          transition: 0.15s ease;
+          background: #fafafa;
+      }
+      .poll-item:hover {
+          transform: translateY(-1px);
+          border-color: #93c5fd;
+          background: #f8fbff;
+      }
+      .poll-item-title {
+          font-size: 15px;
+          font-weight: 700;
+          margin-bottom: 8px;
+      }
+      .poll-meta {
+          font-size: 13px;
+          color: #6b7280;
+          line-height: 1.5;
+      }
+      .empty-box {
+          padding: 18px;
+          border-radius: 12px;
+          background: #f9fafb;
+          border: 1px dashed #d1d5db;
+          color: #6b7280;
+          font-size: 14px;
+      }
 
-<section class="grid three-col">
-  <div class="card">
-    <div class="section-title-row">
-      <h2>진행 중인 투표</h2>
-      <span class="muted">{{ open_polls|length }}개</span>
-    </div>
-    {% if open_polls %}
-      <div class="card-list">
-        {% for poll in open_polls %}
-          <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
-            <strong>{{ poll['title'] }}</strong>
-            <span>종료: {{ to_display(poll['end_at']) }}</span>
-            <span>개설자: {{ poll['creator_nickname'] }}</span>
-          </a>
+      .flash-wrap {
+          max-width: 1100px;
+          margin: 16px auto 0;
+          padding: 0 16px;
+      }
+      .flash {
+          padding: 12px 14px;
+          border-radius: 10px;
+          margin-bottom: 10px;
+          font-size: 14px;
+      }
+      .flash.error {
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #fecaca;
+      }
+      .flash.success {
+          background: #dcfce7;
+          color: #166534;
+          border: 1px solid #bbf7d0;
+      }
+
+      .modal {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.45);
+          display: none;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          z-index: 50;
+      }
+      .modal.show {
+          display: flex;
+      }
+      .modal-card {
+          width: 100%;
+          max-width: 420px;
+          background: #fff;
+          border-radius: 16px;
+          padding: 22px;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+      }
+      .modal-card h3 {
+          margin: 0 0 8px;
+      }
+      .modal-card p {
+          margin: 0 0 16px;
+          color: #6b7280;
+          font-size: 14px;
+      }
+      .input {
+          width: 100%;
+          padding: 12px 13px;
+          border: 1px solid #d1d5db;
+          border-radius: 10px;
+          font-size: 14px;
+          margin-bottom: 14px;
+      }
+      .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+      }
+
+      @media (max-width: 900px) {
+          .section-grid {
+              grid-template-columns: 1fr;
+          }
+          .topbar-inner {
+              flex-direction: column;
+              align-items: stretch;
+          }
+          .actions {
+              justify-content: flex-end;
+          }
+      }
+  </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <h1 class="title">공개 투표판</h1>
+            <div class="actions">
+                <button class="btn btn-primary" type="button" onclick="openAdminModal()">투표 만들기</button>
+            </div>
+        </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-wrap">
+        {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
         {% endfor %}
-      </div>
-    {% else %}
-      <p class="muted">아직 진행 중인 투표가 없어.</p>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <div class="section-title-row">
-      <h2>시작 예정 투표</h2>
-      <span class="muted">{{ scheduled_polls|length }}개</span>
     </div>
-    {% if scheduled_polls %}
-      <div class="card-list">
-        {% for poll in scheduled_polls %}
-          <a class="list-card scheduled-card" href="#" data-start-at="{{ to_display(poll['start_at']) }}" onclick="return showNotStartedPopup(this);">
-            <strong>{{ poll['title'] }}</strong>
-            <span>시작: {{ to_display(poll['start_at']) }}</span>
-            <span>개설자: {{ poll['creator_nickname'] }}</span>
-          </a>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="muted">예정된 투표가 없어.</p>
     {% endif %}
-  </div>
+    {% endwith %}
 
-  <div class="card">
-    <div class="section-title-row">
-      <h2>최근 종료된 투표</h2>
-      <span class="muted">최대 20개</span>
+    <main class="container">
+        <section class="hero">
+            <h2>진행 중인 투표와 예정된 투표를 한 번에 보기</h2>
+            <p>
+                로그인 없이 투표 내용을 확인할 수 있어.  
+                투표 생성은 관리자 코드가 있어야 가능하고, 이미 투표했더라도 대표 캐릭터 닉네임 기준으로 다시 투표하면 기존 투표가 새 투표로 갱신돼.
+            </p>
+        </section>
+
+        <section class="section-grid">
+            <div class="section-card">
+                <h3>진행 중인 투표</h3>
+                {% if open_polls %}
+                    <div class="poll-list">
+                        {% for poll in open_polls %}
+                        <a class="poll-item" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
+                            <div class="poll-item-title">{{ poll['title'] }}</div>
+                            <div class="poll-meta">
+                                작성자: {{ poll['creator_nickname'] }}<br>
+                                종료: {{ to_display(poll['end_at']) }}
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-box">현재 진행 중인 투표가 없어.</div>
+                {% endif %}
+            </div>
+
+            <div class="section-card">
+                <h3>시작 예정 투표</h3>
+                {% if scheduled_polls %}
+                    <div class="poll-list">
+                        {% for poll in scheduled_polls %}
+                        <a class="poll-item" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
+                            <div class="poll-item-title">{{ poll['title'] }}</div>
+                            <div class="poll-meta">
+                                작성자: {{ poll['creator_nickname'] }}<br>
+                                시작: {{ to_display(poll['start_at']) }}
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-box">시작 예정인 투표가 없어.</div>
+                {% endif %}
+            </div>
+
+            <div class="section-card">
+                <h3>최근 종료된 투표</h3>
+                {% if closed_polls %}
+                    <div class="poll-list">
+                        {% for poll in closed_polls %}
+                        <a class="poll-item" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
+                            <div class="poll-item-title">{{ poll['title'] }}</div>
+                            <div class="poll-meta">
+                                작성자: {{ poll['creator_nickname'] }}<br>
+                                종료: {{ to_display(poll['end_at']) }}
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-box">최근 종료된 투표가 없어.</div>
+                {% endif %}
+            </div>
+        </section>
+    </main>
+
+    <div id="adminModal" class="modal">
+        <div class="modal-card">
+            <h3>관리자 비밀번호 입력</h3>
+            <p>이전 설정한 ADMIN_CODES 중 하나를 입력해야 투표를 만들 수 있어.</p>
+            <form method="post" action="{{ url_for('admin_check') }}">
+                <input class="input" type="password" name="admin_code" placeholder="관리자 비밀번호" required>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeAdminModal()">취소</button>
+                    <button type="submit" class="btn btn-primary">확인</button>
+                </div>
+            </form>
+        </div>
     </div>
-    {% if closed_polls %}
-      <div class="card-list">
-        {% for poll in closed_polls %}
-          <a class="list-card" href="{{ url_for('view_poll', poll_id=poll['id']) }}">
-            <strong>{{ poll['title'] }}</strong>
-            <span>종료: {{ to_display(poll['end_at']) }}</span>
-            <span>개설자: {{ poll['creator_nickname'] }}</span>
-          </a>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="muted">종료된 투표가 아직 없어.</p>
-    {% endif %}
-  </div>
-</section>
 
-<script>
-function showNotStartedPopup(el) {
-  const startAt = el.dataset.startAt || '';
-  alert(`이 투표는 아직 시작되지 않았어.\n시작 시간: ${startAt}`);
-  return false;
-}
-</script>
-{% endblock %}
+    <script>
+        const adminModal = document.getElementById('adminModal');
+
+        function openAdminModal() {
+            adminModal.classList.add('show');
+        }
+
+        function closeAdminModal() {
+            adminModal.classList.remove('show');
+        }
+
+        adminModal.addEventListener('click', function (e) {
+            if (e.target === adminModal) {
+                closeAdminModal();
+            }
+        });
+    </script>
+</body>
+</html>
