@@ -106,7 +106,7 @@
               {% endfor %}
             </ul>
           {% else %}
-            <p class="muted">아직 투표가 없어.</p>
+            <p class="muted">투표 내역이 없습니다..</p>
           {% endif %}
         </article>
       {% endfor %}
@@ -120,12 +120,12 @@
         <form method="post" action="{{ url_for('submit_vote', poll_id=poll['id']) }}">
           <div class="form-row">
             <label for="nickname">투표 닉네임</label>
-            <input id="nickname" name="nickname" type="text" placeholder="예: 대재" required>
+            <input id="nickname" name="nickname" type="text" placeholder="예: 대재(살성)" required>
           </div>
 
           <div class="form-row">
-            <label for="representative_nickname">대표 캐릭터 닉네임</label>
-            <input id="representative_nickname" name="representative_nickname" type="text" placeholder="중복 투표 갱신 기준" required>
+            <label for="representative_nickname">추가할 부캐 닉네임</label>
+            <input id="representative_nickname" name="representative_nickname" type="text" placeholder="희루(궁성),닥터(치유),의무(호법)" required>
           </div>
 
           <div class="form-row">
@@ -160,12 +160,12 @@
       <div class="grid">
         <form method="post" action="{{ url_for('submit_comment', poll_id=poll['id']) }}">
           <div class="form-row">
-            <label for="comment_nickname">닉네임</label>
-            <input id="comment_nickname" name="nickname" type="text" required>
+            <label for="comment_nickname">투표 닉네임</label>
+            <input id="comment_nickname" name="nickname" placeholder="예: 대재" type="text" required>
           </div>
           <div class="form-row">
             <label for="comment_content">댓글</label>
-            <textarea id="comment_content" name="content" placeholder="댓글 내용을 입력해줘." required></textarea>
+            <textarea id="comment_content" name="content" placeholder="댓글 내용을 입력해주세요." required></textarea>
           </div>
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">댓글 등록</button>
@@ -185,7 +185,7 @@
             {% endfor %}
           </div>
         {% else %}
-          <div class="empty-state">아직 댓글이 없어.</div>
+          <div class="empty-state">등록된 댓글이 없습니다.</div>
         {% endif %}
       </div>
     </section>

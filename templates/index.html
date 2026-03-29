@@ -8,9 +8,8 @@
   <section class="section-card">
     <div class="hero">
       <div>
-        <span class="badge">다크 테마 적용</span>
         <h1 style="margin-top:14px;">투표 목록</h1>
-        <p class="muted">현재 진행 중인 투표, 시작 예정 투표, 종료된 투표를 한 번에 볼 수 있어.</p>
+        <p class="muted">모든 투표를 한 번에 볼 수 있습니다.</p>
       </div>
       <div class="action-row">
         <button
@@ -59,7 +58,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state">현재 진행 중인 투표가 없어.</div>
+      <div class="empty-state">현재 진행 중인 투표가 없습니다.</div>
     {% endif %}
   </section>
 
@@ -96,7 +95,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty-state">시작 예정인 투표가 없어.</div>
+      <div class="empty-state">시작 예정인 투표가 없습니다.</div>
     {% endif %}
   </section>
 
@@ -130,7 +129,7 @@
         </table>
       </div>
     {% else %}
-      <div class="empty-state">종료된 투표가 아직 없어.</div>
+      <div class="empty-state">종료된 투표가 없습니다.</div>
     {% endif %}
   </section>
 </div>
