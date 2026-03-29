@@ -1,13 +1,10 @@
-
 import os
-import sqlite3
 import psycopg
 from psycopg.rows import dict_row
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
-
 
 import requests
 from flask import (
@@ -24,14 +21,12 @@ from flask import (
 )
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'polls.db')
 KST = ZoneInfo('Asia/Seoul')
 UTC = timezone.utc
 ADMIN_SESSION_MINUTES = 5
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-me')
-app.config['DATABASE'] = os.getenv('DATABASE_PATH', DB_PATH)
 app.config['FINALIZE_TOKEN'] = os.getenv('FINALIZE_TOKEN', 'change-me-finalize-token')
 app.config['WEBHOOK_URL'] = os.getenv('DISCORD_WEBHOOK_URL', '')
 app.config['ADMIN_NICKNAME'] = os.getenv('ADMIN_NICKNAME', '관리자')
@@ -40,10 +35,16 @@ app.config['ADMIN_CODES'] = [
 ]
 
 
+def get_database_url() -> str:
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        raise RuntimeError("DATABASE_URL 환경변수가 설정되지 않았어.")
+    return database_url
+
+
 def get_db():
     if 'db' not in g:
-        DATABASE_URL = os.environ.get("DATABASE_URL")
-        g.db = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        g.db = psycopg.connect(get_database_url(), row_factory=dict_row)
     return g.db
 
 
@@ -53,9 +54,11 @@ def ensure_db():
     try:
         db.execute("SELECT 1 FROM polls LIMIT 1")
     except Exception:
-        schema_path = os.path.join(os.path.dirname(__file__), 'schema.sql')
+        schema_path = os.path.join(BASE_DIR, 'schema.sql')
         with open(schema_path, 'r', encoding='utf-8') as f:
-            db.executescript(f.read())
+            schema_sql = f.read()
+        with db.cursor() as cur:
+            cur.execute(schema_sql)
         db.commit()
 
 
@@ -67,7 +70,7 @@ def close_db(_error=None):
 
 
 def init_db():
-    with psycopg.connect(os.environ["DATABASE_URL"]) as db:
+    with psycopg.connect(get_database_url(), row_factory=dict_row) as db:
         with db.cursor() as cur:
             with open(os.path.join(BASE_DIR, 'schema.sql'), 'r', encoding='utf-8') as f:
                 cur.execute(f.read())
@@ -121,7 +124,7 @@ def poll_state(poll) -> str:
 
 def fetch_poll_or_404(poll_id: int):
     db = get_db()
-    poll = db.execute('SELECT * FROM polls WHERE id = ?', (poll_id,)).fetchone()
+    poll = db.execute('SELECT * FROM polls WHERE id = %s', (poll_id,)).fetchone()
     if poll is None:
         abort(404)
     return poll
@@ -131,37 +134,37 @@ def fetch_poll_detail(poll_id: int):
     db = get_db()
     poll = fetch_poll_or_404(poll_id)
     options = db.execute(
-        """
+        '''
         SELECT *
         FROM poll_options
-        WHERE poll_id = ?
+        WHERE poll_id = %s
         ORDER BY id
-        """,
+        ''',
         (poll_id,),
     ).fetchall()
     votes = db.execute(
-        """
+        '''
         SELECT v.*, o.option_text
         FROM votes v
         JOIN poll_options o ON o.id = v.option_id
-        WHERE v.poll_id = ?
+        WHERE v.poll_id = %s
         ORDER BY v.created_at ASC, v.id ASC
-        """,
+        ''',
         (poll_id,),
     ).fetchall()
 
     comments = []
     try:
         comments = db.execute(
-            """
+            '''
             SELECT *
             FROM comments
-            WHERE poll_id = ?
+            WHERE poll_id = %s
             ORDER BY created_at DESC, id DESC
-            """,
+            ''',
             (poll_id,),
         ).fetchall()
-    except sqlite3.OperationalError:
+    except Exception:
         comments = []
 
     return poll, options, votes, comments
@@ -302,7 +305,7 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
     now_iso = kst_now().astimezone(UTC).isoformat()
 
     if poll_ids:
-        placeholders = ','.join('?' for _ in poll_ids)
+        placeholders = ','.join(['%s'] * len(poll_ids))
         polls = db.execute(
             f"SELECT * FROM polls WHERE id IN ({placeholders}) AND result_sent = 0",
             tuple(poll_ids),
@@ -313,7 +316,7 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
         ).fetchall()
     else:
         polls = db.execute(
-            "SELECT * FROM polls WHERE status = 'open' AND result_sent = 0 AND end_at <= ?",
+            "SELECT * FROM polls WHERE status = 'open' AND result_sent = 0 AND end_at <= %s",
             (now_iso,),
         ).fetchall()
 
@@ -322,7 +325,7 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
         message = format_final_message(poll['id'])
         send_webhook_message(message)
         db.execute(
-            "UPDATE polls SET status = 'closed', result_sent = 1, result_sent_at = ? WHERE id = ?",
+            "UPDATE polls SET status = 'closed', result_sent = 1, result_sent_at = %s WHERE id = %s",
             (now_iso, poll['id']),
         )
         sent_ids.append(poll['id'])
@@ -334,6 +337,7 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
 def run_finalize_due_polls():
     with app.app_context():
         finalize_due_polls(force=False)
+
 
 def start_scheduler():
     scheduler = BackgroundScheduler()
@@ -356,7 +360,7 @@ def render_edit_poll(poll_id: int, form_data=None):
     poll = fetch_poll_or_404(poll_id)
     db = get_db()
     option_rows = db.execute(
-        'SELECT id, option_text FROM poll_options WHERE poll_id = ? ORDER BY id',
+        'SELECT id, option_text FROM poll_options WHERE poll_id = %s ORDER BY id',
         (poll_id,),
     ).fetchall()
 
@@ -483,12 +487,13 @@ def create_poll():
 
         db = get_db()
         cursor = db.execute(
-            """
+            '''
             INSERT INTO polls (
                 title, description, creator_nickname, start_at, end_at,
                 status, result_sent, result_sent_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, 'open', 0, NULL, ?)
-            """,
+            ) VALUES (%s, %s, %s, %s, %s, 'open', 0, NULL, %s)
+            RETURNING id
+            ''',
             (
                 title,
                 description,
@@ -498,12 +503,12 @@ def create_poll():
                 now_utc_iso(),
             ),
         )
-        poll_id = cursor.lastrowid
+        poll_id = cursor.fetchone()['id']
 
         created_at = now_utc_iso()
         for option in options:
             db.execute(
-                'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (?, ?, ?)',
+                'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (%s, %s, %s)',
                 (poll_id, option, created_at),
             )
 
@@ -571,7 +576,7 @@ def edit_poll(poll_id: int):
 
         db = get_db()
         existing_rows = db.execute(
-            'SELECT id FROM poll_options WHERE poll_id = ? ORDER BY id',
+            'SELECT id FROM poll_options WHERE poll_id = %s ORDER BY id',
             (poll_id,),
         ).fetchall()
         existing_ids = {str(row['id']) for row in existing_rows}
@@ -586,30 +591,30 @@ def edit_poll(poll_id: int):
 
             if option_id and cleaned_text:
                 db.execute(
-                    'UPDATE poll_options SET option_text = ? WHERE id = ? AND poll_id = ?',
+                    'UPDATE poll_options SET option_text = %s WHERE id = %s AND poll_id = %s',
                     (cleaned_text, int(option_id), poll_id),
                 )
             elif option_id and not cleaned_text:
                 delete_option_ids.append(int(option_id))
             elif not option_id and cleaned_text:
                 db.execute(
-                    'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (?, ?, ?)',
+                    'INSERT INTO poll_options (poll_id, option_text, created_at) VALUES (%s, %s, %s)',
                     (poll_id, cleaned_text, now_utc_iso()),
                 )
 
         if delete_option_ids:
-            placeholders = ','.join('?' for _ in delete_option_ids)
+            placeholders = ','.join(['%s'] * len(delete_option_ids))
             db.execute(
-                f'DELETE FROM votes WHERE poll_id = ? AND option_id IN ({placeholders})',
+                f'DELETE FROM votes WHERE poll_id = %s AND option_id IN ({placeholders})',
                 (poll_id, *delete_option_ids),
             )
             db.execute(
-                f'DELETE FROM poll_options WHERE poll_id = ? AND id IN ({placeholders})',
+                f'DELETE FROM poll_options WHERE poll_id = %s AND id IN ({placeholders})',
                 (poll_id, *delete_option_ids),
             )
 
         db.execute(
-            'UPDATE polls SET title = ?, description = ? WHERE id = ?',
+            'UPDATE polls SET title = %s, description = %s WHERE id = %s',
             (title, description, poll_id),
         )
         db.commit()
@@ -660,40 +665,36 @@ def submit_vote(poll_id: int):
         flash('투표 항목을 하나 이상 선택해줘.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
-    # 중복 선택 제거
     option_ids = list(dict.fromkeys(option_ids))
-
     db = get_db()
 
-    placeholders = ','.join('?' for _ in option_ids)
+    placeholders = ','.join(['%s'] * len(option_ids))
     valid_rows = db.execute(
         f'''
         SELECT id
         FROM poll_options
-        WHERE poll_id = ? AND id IN ({placeholders})
+        WHERE poll_id = %s AND id IN ({placeholders})
         ''',
         (poll_id, *option_ids),
     ).fetchall()
 
     valid_option_ids = {str(row['id']) for row in valid_rows}
-
     if len(valid_option_ids) != len(option_ids):
         flash('유효하지 않은 투표 항목이 포함되어 있어.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
-    # 기존 대표 닉네임 투표 전체 삭제 후, 선택한 여러 항목 다시 저장
     db.execute(
-        'DELETE FROM votes WHERE poll_id = ? AND representative_nickname = ?',
+        'DELETE FROM votes WHERE poll_id = %s AND representative_nickname = %s',
         (poll_id, representative_nickname),
     )
 
     created_at = now_utc_iso()
     for option_id in option_ids:
         db.execute(
-            """
+            '''
             INSERT INTO votes (poll_id, option_id, nickname, representative_nickname, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
+            VALUES (%s, %s, %s, %s, %s)
+            ''',
             (poll_id, int(option_id), nickname, representative_nickname, created_at),
         )
 
@@ -716,11 +717,11 @@ def submit_comment(poll_id: int):
     db = get_db()
     try:
         db.execute(
-            'INSERT INTO comments (poll_id, nickname, content, created_at) VALUES (?, ?, ?, ?)',
+            'INSERT INTO comments (poll_id, nickname, content, created_at) VALUES (%s, %s, %s, %s)',
             (poll_id, nickname, content, now_utc_iso()),
         )
         db.commit()
-    except sqlite3.OperationalError:
+    except Exception:
         flash('댓글 기능이 현재 비활성화되어 있어.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
@@ -744,7 +745,7 @@ def close_poll(poll_id: int):
     db = get_db()
     now_iso = kst_now().astimezone(UTC).isoformat()
     db.execute(
-        "UPDATE polls SET end_at = ?, status = 'open', result_sent = 0 WHERE id = ?",
+        "UPDATE polls SET end_at = %s, status = 'open', result_sent = 0 WHERE id = %s",
         (now_iso, poll_id),
     )
     db.commit()
@@ -770,7 +771,7 @@ def delete_poll(poll_id: int):
 
     db = get_db()
     title = poll['title']
-    db.execute('DELETE FROM polls WHERE id = ?', (poll_id,))
+    db.execute('DELETE FROM polls WHERE id = %s', (poll_id,))
     db.commit()
     flash(f'"{title}" 투표를 삭제했어.', 'success')
     return redirect(url_for('index'))
@@ -804,6 +805,4 @@ if should_start_scheduler():
 
 
 if __name__ == '__main__':
-    if not os.path.exists(app.config['DATABASE']):
-        init_db()
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', '5000')), debug=False)
