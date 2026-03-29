@@ -23,7 +23,7 @@ poll_app/
 ├─ .env
 ├─ README.md
 ├─ static/
-│  └─ style.css
+│  └─ dark.css
 ├─ templates/
 │  ├─ base.html
 │  ├─ index.html

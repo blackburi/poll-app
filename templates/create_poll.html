@@ -1,193 +1,119 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>투표 만들기</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f5f7fb;
-            color: #222;
-        }
-        .container {
-            max-width: 760px;
-            margin: 0 auto;
-            padding: 28px 16px 48px;
-        }
-        .card {
-            background: #fff;
-            border-radius: 18px;
-            padding: 24px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.07);
-        }
-        h1 {
-            margin: 0 0 20px;
-            font-size: 28px;
-        }
-        .desc {
-            margin-bottom: 24px;
-            color: #6b7280;
-            line-height: 1.5;
-        }
-        .field {
-            margin-bottom: 16px;
-        }
-        .field label {
-            display: block;
-            margin-bottom: 8px;
-            font-size: 14px;
-            font-weight: 700;
-        }
-        .input, .textarea {
-            width: 100%;
-            padding: 12px 13px;
-            border: 1px solid #d1d5db;
-            border-radius: 10px;
-            font-size: 14px;
-            background: #fff;
-        }
-        .textarea {
-            min-height: 120px;
-            resize: vertical;
-        }
-        .checkbox-row {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin: 20px 0;
-            padding: 16px;
-            background: #f9fafb;
-            border-radius: 12px;
-            border: 1px solid #e5e7eb;
-        }
-        .checkbox-row label {
-            font-weight: 500;
-            margin: 0;
-        }
-        .help {
-            margin-top: 6px;
-            font-size: 12px;
-            color: #6b7280;
-            line-height: 1.45;
-        }
-        .actions {
-            margin-top: 24px;
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        .btn {
-            border: none;
-            border-radius: 10px;
-            padding: 11px 16px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 700;
-            text-decoration: none;
-        }
-        .btn-primary {
-            background: #2563eb;
-            color: #fff;
-        }
-        .btn-secondary {
-            background: #e5e7eb;
-            color: #111827;
-        }
-        .flash-wrap {
-            margin-bottom: 16px;
-        }
-        .flash {
-            padding: 12px 14px;
-            border-radius: 10px;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-        .flash.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-        }
-        .flash.success {
-            background: #dcfce7;
-            color: #166534;
-            border: 1px solid #bbf7d0;
-        }
-    </style>
-</head>
-<body>
-    <main class="container">
-        <div class="card">
-            <h1>새 투표 만들기</h1>
-            <div class="desc">
-                제목, 기간, 선택지를 입력해서 새 투표를 만들 수 있어.  
-                선택지는 한 줄에 하나씩 입력하면 돼.
-            </div>
+{% extends "base.html" %}
 
-            {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            <div class="flash-wrap">
-                {% for category, message in messages %}
-                    <div class="flash {{ category }}">{{ message }}</div>
-                {% endfor %}
-            </div>
-            {% endif %}
-            {% endwith %}
+{% block title %}투표 생성{% endblock %}
 
-            <form method="post" action="{{ url_for('create_poll') }}">
-                <div class="field">
-                    <label for="title">투표 제목</label>
-                    <input class="input" id="title" type="text" name="title" required>
-                </div>
+{% block content %}
+<section class="form-card">
+  <div class="section-header">
+    <div>
+      <span class="badge">관리자 전용</span>
+      <h1 style="margin:14px 0 8px;">새 투표 생성</h1>
+      <p class="muted">투표 생성 버튼을 누를 때 관리자 닉네임과 관리자 코드를 함께 확인해.</p>
+    </div>
+  </div>
 
-                <div class="field">
-                    <label for="creator_nickname">생성자 닉네임</label>
-                    <input class="input" id="creator_nickname" type="text" name="creator_nickname" placeholder="비우면 기본 관리자 닉네임 사용">
-                </div>
+  <form method="post" action="{{ url_for('create_poll') }}">
+    <div class="grid-2">
+      <div class="form-row">
+        <label for="admin_nickname">관리자 닉네임</label>
+        <input
+          id="admin_nickname"
+          name="admin_nickname"
+          type="text"
+          value="{{ admin_nickname }}"
+          readonly
+        >
+      </div>
 
-                <div class="field">
-                    <label for="description">설명</label>
-                    <textarea class="textarea" id="description" name="description" placeholder="투표 설명을 적어줘."></textarea>
-                </div>
+      <div class="form-row">
+        <label for="admin_code">관리자 비밀번호</label>
+        <input
+          id="admin_code"
+          name="admin_code"
+          type="password"
+          placeholder="ADMIN_CODES 중 하나 입력"
+          required
+        >
+      </div>
+    </div>
 
-                <div class="field">
-                    <label for="start_at">시작 시간</label>
-                    <input class="input" id="start_at" type="datetime-local" name="start_at" required>
-                </div>
+    <hr>
 
-                <div class="field">
-                    <label for="end_at">종료 시간</label>
-                    <input class="input" id="end_at" type="datetime-local" name="end_at" required>
-                </div>
+    <div class="form-row">
+      <label for="title">투표 제목</label>
+      <input
+        id="title"
+        name="title"
+        type="text"
+        value="{{ form_data.get('title', '') }}"
+        placeholder="예: 이번 주 레이드 시간 조사"
+        required
+      >
+    </div>
 
-                <div class="field">
-                    <label for="options_text">선택지</label>
-                    <textarea class="textarea" id="options_text" name="options_text" placeholder="예시&#10;찬성&#10;반대&#10;보류" required></textarea>
-                    <div class="help">
-                        한 줄에 하나씩 입력해. 같은 문구가 여러 번 들어가면 중복은 자동 제거돼.
-                    </div>
-                </div>
+    <div class="grid-2">
+      <div class="form-row">
+        <label for="creator_nickname">개설자 닉네임</label>
+        <input
+          id="creator_nickname"
+          name="creator_nickname"
+          type="text"
+          value="{{ form_data.get('creator_nickname', admin_nickname) }}"
+          placeholder="비워두면 관리자 닉네임으로 저장"
+        >
+      </div>
 
-                <div class="checkbox-row">
-                    <label>
-                        <input type="checkbox" name="show_live_result" checked>
-                        진행 중에도 실시간 결과 표시
-                    </label>
+      <div class="form-row">
+        <label for="description">설명</label>
+        <input
+          id="description"
+          name="description"
+          type="text"
+          value="{{ form_data.get('description', '') }}"
+          placeholder="선택 사항"
+        >
+      </div>
+    </div>
 
-                    <label>
-                        <input type="checkbox" name="show_voter_names" checked>
-                        투표자 닉네임 표시
-                    </label>
-                </div>
+    <div class="grid-2">
+      <div class="form-row">
+        <label for="start_at">시작 시간</label>
+        <input
+          id="start_at"
+          name="start_at"
+          type="datetime-local"
+          value="{{ form_data.get('start_at', '') }}"
+          required
+        >
+      </div>
 
-                <div class="actions">
-                    <a class="btn btn-secondary" href="{{ url_for('index') }}">취소</a>
-                    <button class="btn btn-primary" type="submit">투표 생성</button>
-                </div>
-            </form>
-        </div>
-    </main>
-</body>
-</html>
+      <div class="form-row">
+        <label for="end_at">종료 시간</label>
+        <input
+          id="end_at"
+          name="end_at"
+          type="datetime-local"
+          value="{{ form_data.get('end_at', '') }}"
+          required
+        >
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="options_text">투표 항목</label>
+      <textarea
+        id="options_text"
+        name="options_text"
+        placeholder="한 줄에 하나씩 입력해줘&#10;예: 월요일 9시&#10;화요일 10시"
+        required
+      >{{ form_data.get('options_text', '') }}</textarea>
+      <small class="helper-text">중복 항목은 자동으로 제거돼.</small>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">투표 생성</button>
+      <a class="btn btn-secondary" href="{{ url_for('index') }}">목록으로</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

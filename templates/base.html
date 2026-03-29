@@ -1,28 +1,33 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}공개 투표{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}투표 앱{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='dark.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="page-shell">
     <header class="site-header">
-      <div class="container header-row">
-        <a href="{{ url_for('index') }}" class="brand">공개 투표판</a>
-        <nav>
-          <a href="{{ url_for('index') }}">투표 목록</a>
-          <a href="{{ url_for('create_poll') }}">새 투표 만들기</a>
+      <div class="site-header__inner">
+        <a href="{{ url_for('index') }}" class="brand">투표 앱</a>
+        <nav class="site-nav">
+          <a href="{{ url_for('index') }}">홈</a>
+          <a href="{{ url_for('create_poll') }}">투표 생성</a>
         </nav>
       </div>
     </header>
 
-    <main class="container main-content">
+    <main class="page-content">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           <div class="flash-stack">
             {% for category, message in messages %}
-              <div class="flash flash-{{ category }}">{{ message }}</div>
+              <div class="flash flash--{{ category }}">{{ message }}</div>
             {% endfor %}
           </div>
         {% endif %}
@@ -30,5 +35,6 @@
 
       {% block content %}{% endblock %}
     </main>
-  </body>
+  </div>
+</body>
 </html>

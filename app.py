@@ -1,3 +1,4 @@
+
 import os
 import sqlite3
 from collections import defaultdict
@@ -5,7 +6,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import requests
-from flask import Flask, abort, flash, g, redirect, render_template, request, url_for, session
+from flask import Flask, abort, flash, g, redirect, render_template, request, url_for
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'polls.db')
@@ -134,15 +135,21 @@ def fetch_poll_detail(poll_id: int):
         """,
         (poll_id,),
     ).fetchall()
-    comments = db.execute(
-        """
-        SELECT *
-        FROM comments
-        WHERE poll_id = ?
-        ORDER BY created_at DESC, id DESC
-        """,
-        (poll_id,),
-    ).fetchall()
+
+    comments = []
+    try:
+        comments = db.execute(
+            """
+            SELECT *
+            FROM comments
+            WHERE poll_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (poll_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        comments = []
+
     return poll, options, votes, comments
 
 
@@ -292,10 +299,13 @@ def require_admin_or_flash():
     return True
 
 
-@app.before_request
-def ensure_db_exists():
-    if not os.path.exists(app.config['DATABASE']):
-        init_db()
+def render_create_poll(form_data=None):
+    form_data = form_data or {}
+    return render_template(
+        'create_poll.html',
+        admin_nickname=app.config['ADMIN_NICKNAME'],
+        form_data=form_data,
+    )
 
 
 @app.route('/')
@@ -327,58 +337,59 @@ def index():
     )
 
 
-@app.route('/admin-check', methods=['POST'])
-def admin_check():
-    admin_code = request.form.get('admin_code', '').strip()
-
-    if admin_code in app.config['ADMIN_CODES']:
-        session['can_create_poll'] = True
-        return redirect(url_for('create_poll'))
-
-    flash('잘못된 관리자 비밀번호입니다.', 'error')
-    return redirect(url_for('index'))
-
-
 @app.route('/polls/new', methods=['GET', 'POST'])
 def create_poll():
-    if not session.get('can_create_poll'):
-        flash('관리자 비밀번호 확인이 필요해.', 'error')
-        return redirect(url_for('index'))
-
     if request.method == 'POST':
+        admin_code = request.form.get('admin_code', '').strip()
         title = request.form.get('title', '').strip()
         creator_nickname = request.form.get('creator_nickname', '').strip() or app.config['ADMIN_NICKNAME']
         options_text = request.form.get('options_text', '').strip()
         description = request.form.get('description', '').strip()
         start_at = request.form.get('start_at', '').strip()
         end_at = request.form.get('end_at', '').strip()
-        show_live_result = 1 if request.form.get('show_live_result') == 'on' else 0
-        show_voter_names = 1 if request.form.get('show_voter_names') == 'on' else 0
+
+        form_data = {
+            'title': title,
+            'creator_nickname': creator_nickname,
+            'options_text': options_text,
+            'description': description,
+            'start_at': start_at,
+            'end_at': end_at,
+        }
+
+        if admin_code not in app.config['ADMIN_CODES']:
+            flash('관리자 비밀번호가 올바르지 않아.', 'error')
+            return render_create_poll(form_data)
 
         options = normalize_multiline_options(options_text)
         if not title:
             flash('투표 제목을 입력해줘.', 'error')
-            return render_template('create_poll.html')
+            return render_create_poll(form_data)
         if len(options) < 2:
             flash('투표 항목은 최소 2개 이상 필요해.', 'error')
-            return render_template('create_poll.html')
+            return render_create_poll(form_data)
         if not start_at or not end_at:
             flash('시작 시간과 종료 시간을 모두 입력해줘.', 'error')
-            return render_template('create_poll.html')
+            return render_create_poll(form_data)
 
-        start_dt = to_kst(start_at)
-        end_dt = to_kst(end_at)
+        try:
+            start_dt = to_kst(start_at)
+            end_dt = to_kst(end_at)
+        except ValueError:
+            flash('시간 형식이 올바르지 않아.', 'error')
+            return render_create_poll(form_data)
+
         if end_dt <= start_dt:
             flash('종료 시간은 시작 시간보다 뒤여야 해.', 'error')
-            return render_template('create_poll.html')
+            return render_create_poll(form_data)
 
         db = get_db()
         cursor = db.execute(
             """
             INSERT INTO polls (
                 title, description, creator_nickname, start_at, end_at,
-                allow_duplicate, show_live_result, show_voter_names, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
+                status, result_sent, result_sent_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, 'open', 0, NULL, ?)
             """,
             (
                 title,
@@ -386,9 +397,7 @@ def create_poll():
                 creator_nickname,
                 start_dt.astimezone(UTC).isoformat(),
                 end_dt.astimezone(UTC).isoformat(),
-                0,
-                show_live_result,
-                show_voter_names,
+                now_utc_iso(),
             ),
         )
         poll_id = cursor.lastrowid
@@ -401,7 +410,6 @@ def create_poll():
             )
 
         db.commit()
-        session.pop('can_create_poll', None)
 
         try:
             send_webhook_message(format_created_message(poll_id))
@@ -412,7 +420,7 @@ def create_poll():
 
         return redirect(url_for('view_poll', poll_id=poll_id))
 
-    return render_template('create_poll.html')
+    return render_create_poll()
 
 
 @app.route('/polls/<int:poll_id>')
@@ -488,11 +496,16 @@ def submit_comment(poll_id: int):
         return redirect(url_for('view_poll', poll_id=poll_id))
 
     db = get_db()
-    db.execute(
-        'INSERT INTO comments (poll_id, nickname, content, created_at) VALUES (?, ?, ?, ?)',
-        (poll_id, nickname, content, now_utc_iso()),
-    )
-    db.commit()
+    try:
+        db.execute(
+            'INSERT INTO comments (poll_id, nickname, content, created_at) VALUES (?, ?, ?, ?)',
+            (poll_id, nickname, content, now_utc_iso()),
+        )
+        db.commit()
+    except sqlite3.OperationalError:
+        flash('댓글 기능이 현재 비활성화되어 있어.', 'error')
+        return redirect(url_for('view_poll', poll_id=poll_id))
+
     flash('댓글이 등록됐어.', 'success')
     return redirect(url_for('view_poll', poll_id=poll_id))
 
