@@ -6,6 +6,8 @@ from psycopg.rows import dict_row
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from apscheduler.schedulers.background import BackgroundScheduler
+
 
 import requests
 from flask import (
@@ -327,6 +329,20 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
 
     db.commit()
     return sent_ids
+
+
+def start_scheduler():
+    scheduler = BackgroundScheduler()
+
+    scheduler.add_job(
+        func=finalize_due_polls,
+        trigger="interval",
+        seconds=60,  # 1분마다 실행
+        id="finalize_polls",
+        replace_existing=True
+    )
+
+    scheduler.start()
 
 
 def render_create_poll(form_data=None):
@@ -775,6 +791,14 @@ def internal_finalize():
 @app.route('/healthz')
 def healthz():
     return {'ok': True, 'time': kst_now().isoformat()}
+
+
+def should_start_scheduler():
+    return os.environ.get("RENDER") == "true" or os.environ.get("FLASK_ENV") != "development"
+
+
+if should_start_scheduler():
+    start_scheduler()
 
 
 if __name__ == '__main__':
