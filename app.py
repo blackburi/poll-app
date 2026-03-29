@@ -240,7 +240,7 @@ def format_created_message(poll_id: int) -> str:
     data = build_poll_view_model(poll_id)
     poll = data['poll']
     lines = [
-        '🆕 새 투표가 생성됐어',
+        '🆕 새 투표가 생성되었습니다.',
         f"제목: {poll['title']}",
         f"개설자: {poll['creator_nickname']}",
         f"기간: {data['start_at_display']} ~ {data['end_at_display']}",
@@ -630,7 +630,7 @@ def submit_vote(poll_id: int):
 
     nickname = request.form.get('nickname', '').strip()
     representative_nickname = request.form.get('representative_nickname', '').strip()
-    option_id = request.form.get('option_id', '').strip()
+    option_ids = [value.strip() for value in request.form.getlist('option_id') if value.strip()]
 
     if not nickname:
         flash('닉네임을 입력해줘.', 'error')
@@ -638,34 +638,50 @@ def submit_vote(poll_id: int):
     if not representative_nickname:
         flash('대표 캐릭터 닉네임을 입력해줘.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
-    if not option_id:
-        flash('투표 항목을 선택해줘.', 'error')
+    if not option_ids:
+        flash('투표 항목을 하나 이상 선택해줘.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
+
+    # 중복 선택 제거
+    option_ids = list(dict.fromkeys(option_ids))
 
     db = get_db()
-    valid_option = db.execute(
-        'SELECT id FROM poll_options WHERE poll_id = ? AND id = ?',
-        (poll_id, option_id),
-    ).fetchone()
 
-    if not valid_option:
-        flash('유효하지 않은 투표 항목이야.', 'error')
+    placeholders = ','.join('?' for _ in option_ids)
+    valid_rows = db.execute(
+        f'''
+        SELECT id
+        FROM poll_options
+        WHERE poll_id = ? AND id IN ({placeholders})
+        ''',
+        (poll_id, *option_ids),
+    ).fetchall()
+
+    valid_option_ids = {str(row['id']) for row in valid_rows}
+
+    if len(valid_option_ids) != len(option_ids):
+        flash('유효하지 않은 투표 항목이 포함되어 있어.', 'error')
         return redirect(url_for('view_poll', poll_id=poll_id))
 
+    # 기존 대표 닉네임 투표 전체 삭제 후, 선택한 여러 항목 다시 저장
     db.execute(
         'DELETE FROM votes WHERE poll_id = ? AND representative_nickname = ?',
         (poll_id, representative_nickname),
     )
-    db.execute(
-        """
-        INSERT INTO votes (poll_id, option_id, nickname, representative_nickname, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (poll_id, int(option_id), nickname, representative_nickname, now_utc_iso()),
-    )
+
+    created_at = now_utc_iso()
+    for option_id in option_ids:
+        db.execute(
+            """
+            INSERT INTO votes (poll_id, option_id, nickname, representative_nickname, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (poll_id, int(option_id), nickname, representative_nickname, created_at),
+        )
+
     db.commit()
 
-    flash('투표가 저장됐어. 기존 투표가 있었다면 새 투표로 갱신됐어.', 'success')
+    flash('선택한 여러 항목으로 투표가 저장됐어. 기존 투표가 있었다면 새 선택으로 갱신됐어.', 'success')
     return redirect(url_for('view_poll', poll_id=poll_id))
 
 

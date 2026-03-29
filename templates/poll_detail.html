@@ -133,7 +133,7 @@
             <div class="radio-list">
               {% for option in options %}
                 <label class="radio-item">
-                  <input type="radio" name="option_id" value="{{ option['id'] }}" required>
+                  <input type="checkbox" name="option_id" value="{{ option['id'] }}">
                   <span>{{ option['text'] }}</span>
                 </label>
               {% endfor %}
