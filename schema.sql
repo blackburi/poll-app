@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS polls (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT,
     creator_nickname TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS polls (
 );
 
 CREATE TABLE IF NOT EXISTS poll_options (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     poll_id INTEGER NOT NULL,
     option_text TEXT NOT NULL,
     created_at TEXT NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS poll_options (
 DROP TABLE IF EXISTS votes;
 
 CREATE TABLE IF NOT EXISTS votes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     poll_id INTEGER NOT NULL,
     option_id INTEGER NOT NULL,
     nickname TEXT NOT NULL,
@@ -39,7 +39,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_poll_rep
 ON votes (poll_id, representative_nickname);
 
 CREATE TABLE IF NOT EXISTS comments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     poll_id INTEGER NOT NULL,
     nickname TEXT NOT NULL,
     content TEXT NOT NULL,

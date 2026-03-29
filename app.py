@@ -1,6 +1,8 @@
 
 import os
 import sqlite3
+import psycopg
+from psycopg.rows import dict_row
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -38,9 +40,8 @@ app.config['ADMIN_CODES'] = [
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(app.config['DATABASE'])
-        g.db.row_factory = sqlite3.Row
-        g.db.execute('PRAGMA foreign_keys = ON')
+        DATABASE_URL = os.environ.get("DATABASE_URL")
+        g.db = psycopg.connect(DATABASE_URL, row_factory=dict_row)
     return g.db
 
 
@@ -64,12 +65,11 @@ def close_db(_error=None):
 
 
 def init_db():
-    db = sqlite3.connect(app.config['DATABASE'])
-    db.execute('PRAGMA foreign_keys = ON')
-    with open(os.path.join(BASE_DIR, 'schema.sql'), 'r', encoding='utf-8') as f:
-        db.executescript(f.read())
-    db.commit()
-    db.close()
+    with psycopg.connect(os.environ["DATABASE_URL"]) as db:
+        with db.cursor() as cur:
+            with open(os.path.join(BASE_DIR, 'schema.sql'), 'r', encoding='utf-8') as f:
+                cur.execute(f.read())
+        db.commit()
 
 
 def kst_now():
