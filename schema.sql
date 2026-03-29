@@ -3,15 +3,15 @@ CREATE TABLE IF NOT EXISTS polls (
     title TEXT NOT NULL,
     description TEXT,
     creator_nickname TEXT NOT NULL,
-    start_at TEXT NOT NULL,
-    end_at TEXT NOT NULL,
+    end_at TIMESTAMPTZ,
+    start_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ,
     allow_duplicate INTEGER NOT NULL DEFAULT 1,
     show_live_result INTEGER NOT NULL DEFAULT 1,
     show_voter_names INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'open',
     result_sent INTEGER NOT NULL DEFAULT 0,
-    result_sent_at TEXT,
-    created_at TEXT NOT NULL
+    result_sent_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS poll_options (

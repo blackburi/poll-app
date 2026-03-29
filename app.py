@@ -316,7 +316,7 @@ def finalize_due_polls(force: bool = False, poll_ids=None):
         ).fetchall()
     else:
         polls = db.execute(
-            "SELECT * FROM polls WHERE status = 'open' AND result_sent = 0 AND end_at <= %s",
+            "SELECT * FROM polls WHERE status = 'open' AND result_sent = 0 AND end_at::timestamptz <= %s",
             (now_iso,),
         ).fetchall()
 
