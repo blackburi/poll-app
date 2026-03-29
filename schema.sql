@@ -35,8 +35,10 @@ CREATE TABLE IF NOT EXISTS votes (
     FOREIGN KEY (option_id) REFERENCES poll_options (id) ON DELETE CASCADE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_poll_rep
-ON votes (poll_id, representative_nickname);
+DROP INDEX IF EXISTS idx_votes_poll_rep;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_poll_rep_option
+ON votes (poll_id, representative_nickname, option_id);
 
 CREATE TABLE IF NOT EXISTS comments (
     id SERIAL PRIMARY KEY,
